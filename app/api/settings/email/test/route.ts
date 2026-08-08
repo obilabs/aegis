@@ -18,7 +18,7 @@ import {
   recordEmailAttempt,
   recordTestAttempt,
 } from '@/lib/email-settings'
-import { getProvider, type EmailProvider, type SendEmailInput } from '@aegis/email'
+import { getProvider, type EmailProvider, type SendEmailInput } from '@obilabs/email'
 
 // In-memory rate limiter — 5 requests per user per rolling hour.
 // Acceptable for v1: rate limit is per process, and apps/aegis runs as

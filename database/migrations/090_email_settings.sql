@@ -7,7 +7,7 @@
 --   email_settings — one row per organization, holds the provider choice +
 --                    encrypted provider credentials + last-test/last-send
 --                    status. Encryption uses AEGIS_SECRETS_KEY via the
---                    @aegis/email package's envelope helper.
+--                    @obilabs/email package's envelope helper.
 --   email_attempts — append-only audit log, one row per send attempt
 --                    (success or failure), retained for visibility into
 --                    delivery issues.
@@ -71,7 +71,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS email_settings (
   organization_id UUID PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
   provider VARCHAR(20) NOT NULL DEFAULT 'gmail-relay',
-  -- v1.<nonce>.<ct>.<tag> envelope from @aegis/email crypto helper.
+  -- v1.<nonce>.<ct>.<tag> envelope from @obilabs/email crypto helper.
   -- NULL means "provider chosen but not yet configured."
   config_envelope TEXT,
   from_address VARCHAR(255) NOT NULL,

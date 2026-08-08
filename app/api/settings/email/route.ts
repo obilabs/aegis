@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getProvider, PROVIDER_IDS, type ProviderId } from '@aegis/email'
+import { getProvider, PROVIDER_IDS, type ProviderId } from '@obilabs/email'
 import { queryOne } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { getEmailSettings, saveEmailSettings } from '@/lib/email-settings'

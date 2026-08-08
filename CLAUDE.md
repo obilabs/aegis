@@ -193,7 +193,7 @@ Priorities: `low` (5d), `medium` (2d), `high` (1d), `urgent` (4h), `critical` (1
 | `lib/db.ts` | Pool + query helpers (`pool`, `query`, `queryOne`) |
 | `lib/features.ts` | Feature flag registry and evaluation |
 | `lib/ai-chat-security.ts` | AI access control by context level |
-| `lib/email-queue.ts` | Email queue (pg-boss); worker dispatches via `@aegis/email` |
+| `lib/email-queue.ts` | Email queue (pg-boss); worker dispatches via `@obilabs/email` |
 | `lib/email-settings.ts` | Email provider config (encrypted), `sendViaConfiguredProvider`, audit |
 | `lib/support-prompt.ts` | AI support prompt templates |
 | `lib/api-auth.ts` | External request validation (Bearer + session); returns `ApiAuthContext` with `keyType` + canonical `permissions: ApiScope[]` |
@@ -208,7 +208,7 @@ Priorities: `low` (5d), `medium` (2d), `high` (1d), `urgent` (4h), `critical` (1
 
 ## Email — provider abstraction (added 2026-05-13)
 
-Outbound email uses `@aegis/email` (workspace package) — six pluggable
+Outbound email uses `@obilabs/email` (workspace package) — six pluggable
 providers (gmail-relay default, gmail-smtp, resend, ses, sendgrid,
 smtp). Config stored in `email_settings` (one row per org, AES-256-GCM
 envelope encrypted via `AEGIS_SECRETS_KEY`). Worker in

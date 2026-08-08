@@ -20,7 +20,7 @@ import { getOrgId, sendViaConfiguredProvider } from './email-settings'
 //
 // All email-enqueue paths flow through this module's queueEmail() →
 // pg-boss → the worker registered in startEmailWorker() below. The worker
-// dispatches via @aegis/email's provider abstraction (sendViaConfiguredProvider).
+// dispatches via @obilabs/email's provider abstraction (sendViaConfiguredProvider).
 // Single-tenant: apps/aegis has exactly one organizations row, so the
 // worker resolves orgId on demand via getOrgId() rather than threading
 // it through every EmailJob.

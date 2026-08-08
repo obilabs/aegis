@@ -1,7 +1,7 @@
 # Workspace-aware Docker build (build context = repo root).
 #
 # We're a pnpm monorepo with `apps/aegis` depending on workspace packages
-# (`@obilabs/api-scopes`, `@obilabs/documents`, `@aegis/email`) via `workspace:*`. To resolve them,
+# (`@obilabs/api-scopes`, `@obilabs/documents`, `@obilabs/email`) via `workspace:*`. To resolve them,
 # the Docker build context must include the whole workspace, not just
 # apps/aegis. docker-compose.yml passes context: ../.. and dockerfile:
 # apps/aegis/Dockerfile.
@@ -48,10 +48,10 @@ COPY apps/aegis/ apps/aegis/
 
 # ---- Stage 3: build dependencies before the app ----------------------------
 # Workspace packages consumed by apps/aegis at build time; build dist/ first.
-RUN pnpm --filter @obilabs/api-scopes build && pnpm --filter @obilabs/documents build && pnpm --filter @aegis/email build
+RUN pnpm --filter @obilabs/api-scopes build && pnpm --filter @obilabs/documents build && pnpm --filter @obilabs/email build
 
 # ---- Stage 4: build the Next.js app ---------------------------------------
-RUN pnpm --filter @aegis/app build
+RUN pnpm --filter @obilabs/aegis build
 
 # ============================================================================
 FROM node:20-alpine AS runner
