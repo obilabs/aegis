@@ -1,7 +1,7 @@
 # Workspace-aware Docker build (build context = repo root).
 #
 # We're a pnpm monorepo with `apps/aegis` depending on workspace packages
-# (`@obilabs/api-scopes`, `@aegis/email`) via `workspace:*`. To resolve them,
+# (`@obilabs/api-scopes`, `@obilabs/documents`, `@aegis/email`) via `workspace:*`. To resolve them,
 # the Docker build context must include the whole workspace, not just
 # apps/aegis. docker-compose.yml passes context: ../.. and dockerfile:
 # apps/aegis/Dockerfile.
@@ -10,7 +10,7 @@
 #   1. Copy workspace metadata (pnpm-workspace.yaml, root package.json, lockfile)
 #   2. Copy ONLY the package.json files of the projects we need (cache-friendly)
 #   3. Run `pnpm install --frozen-lockfile` — populates node_modules for the workspace
-#   4. Copy source for packages/{api-scopes,config,email} + apps/aegis
+#   4. Copy source for packages/{api-scopes,config,documents,email} + apps/aegis
 #   5. Build workspace packages (they produce dist/ that apps/aegis consumes)
 #   6. Build apps/aegis with Next.js standalone output
 #   7. Runner stage copies the standalone output + DB schema/migrations
@@ -32,6 +32,7 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/aegis/package.json apps/aegis/
 COPY packages/api-scopes/package.json packages/api-scopes/
 COPY packages/config/package.json packages/config/
+COPY packages/documents/package.json packages/documents/
 COPY packages/email/package.json packages/email/
 
 # Install with the workspace lockfile. Includes apps/aegis's deps + the
@@ -41,12 +42,13 @@ RUN pnpm install --frozen-lockfile
 # ---- Stage 2: source files --------------------------------------------------
 COPY packages/config/ packages/config/
 COPY packages/api-scopes/ packages/api-scopes/
+COPY packages/documents/ packages/documents/
 COPY packages/email/ packages/email/
 COPY apps/aegis/ apps/aegis/
 
 # ---- Stage 3: build dependencies before the app ----------------------------
 # Workspace packages consumed by apps/aegis at build time; build dist/ first.
-RUN pnpm --filter @obilabs/api-scopes build && pnpm --filter @aegis/email build
+RUN pnpm --filter @obilabs/api-scopes build && pnpm --filter @obilabs/documents build && pnpm --filter @aegis/email build
 
 # ---- Stage 4: build the Next.js app ---------------------------------------
 RUN pnpm --filter @aegis/app build
