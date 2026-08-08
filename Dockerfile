@@ -19,7 +19,7 @@ ENV DOCKER_BUILD=true
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.19.0 --activate
 
 # ---- Stage 1: deps (cache layer) — @obilabs/* from GH Packages via secret -----
 COPY package.json pnpm-lock.yaml .npmrc ./
