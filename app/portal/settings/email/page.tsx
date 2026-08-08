@@ -19,7 +19,7 @@ import {
 } from '@heroicons/react/24/outline'
 
 // ---------------------------------------------------------------------------
-// Types — kept in sync with @aegis/email + /api/settings/email response
+// Types — kept in sync with @obilabs/email + /api/settings/email response
 // ---------------------------------------------------------------------------
 
 type ProviderId =
@@ -63,7 +63,7 @@ const PROVIDERS: ProviderMeta[] = [
 
 // ---------------------------------------------------------------------------
 // Per-provider config shapes the UI collects (mirrors the Zod schemas in
-// @aegis/email but typed for form state, not transport).
+// @obilabs/email but typed for form state, not transport).
 // ---------------------------------------------------------------------------
 
 interface GmailRelayConfig {

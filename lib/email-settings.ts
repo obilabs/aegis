@@ -4,7 +4,7 @@
  * Spec: openspec/changes/email-first-class/design.md (D3, D4)
  *
  * This module is the single chokepoint between `email_settings` (storage)
- * and `@aegis/email` (provider abstraction). The queue worker, the
+ * and `@obilabs/email` (provider abstraction). The queue worker, the
  * Settings → Email UI, and the test-send endpoint all go through here.
  *
  * Single-tenant: apps/aegis has exactly one organization per install
@@ -24,7 +24,7 @@ import {
   type ProviderId,
   type SendEmailInput,
   type SendEmailResult,
-} from '@aegis/email'
+} from '@obilabs/email'
 import { pool, queryOne } from './db'
 
 export interface EmailSettings {
