@@ -27,7 +27,7 @@ const nextConfig = {
     ],
   },
 
-  serverExternalPackages: ['pg', 'isomorphic-dompurify'],
+  serverExternalPackages: ['pg'],
 
   // CORS headers for external API routes (/api/ai/* and /api/v1/*)
   async headers() {
