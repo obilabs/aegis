@@ -1,1 +1,8 @@
 data/
+
+# --- standalone repo (were covered by the monorepo root .gitignore) ---
+node_modules/
+.next/
+dist/
+.turbo/
+data/

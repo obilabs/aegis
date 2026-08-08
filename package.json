@@ -19,9 +19,9 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@aws-sdk/client-s3": "^3.999.0",
-    "@obilabs/email": "workspace:*",
-    "@obilabs/api-scopes": "workspace:*",
-    "@obilabs/documents": "workspace:*",
+    "@obilabs/email": "^0.1.0",
+    "@obilabs/api-scopes": "^0.1.1",
+    "@obilabs/documents": "^0.1.0",
     "@aws-sdk/s3-request-presigner": "^3.999.0",
     "@better-auth/passkey": "~1.4.18",
     "@google/generative-ai": "^0.24.1",
