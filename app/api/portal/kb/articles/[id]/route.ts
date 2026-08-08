@@ -57,6 +57,9 @@ export async function GET(
   const session = await auth.api.getSession({ headers: _request.headers })
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const userId = await getUserId(session.user.email).catch(() => null)
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const orgId = await getOrgId()
   const { id } = await params
 
@@ -71,7 +74,18 @@ export async function GET(
   if (result.rows.length === 0) {
     return NextResponse.json({ error: 'Article not found' }, { status: 404 })
   }
-  return NextResponse.json({ article: result.rows[0] })
+  const article = result.rows[0]
+
+  // Authorization (kb-attestations Phase 2, §3.3): this editor-fetch returns RAW
+  // article source (for the edit form), so gate on EDIT rights — author OR the
+  // settings capability — NOT on visibility. 404 (not 403) on no-entitlement,
+  // matching the public route's non-enumeration convention. Previously this
+  // returned any article (private included, raw source included) to ANY
+  // authenticated user.
+  if (!(await canEditArticle(userId, article.author_id))) {
+    return NextResponse.json({ error: 'Article not found' }, { status: 404 })
+  }
+  return NextResponse.json({ article })
 }
 
 /**

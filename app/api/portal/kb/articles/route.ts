@@ -237,6 +237,16 @@ export async function GET(request: NextRequest) {
 
   const orgId = await getOrgId()
 
+  // Authorization (kb-attestations Phase 2, §3.2): this management list returns
+  // drafts + every status + is_system, so it is an AUTHORING surface — gate on
+  // the settings capability, matching POST and the [id] route. Previously it
+  // returned every org article (including private/internal drafts) to ANY
+  // authenticated user, regardless of visibility.
+  const ctx = await getAuthContext(request)
+  if (!ctx || !(await hasCapabilityOrAdmin(ctx.userId, 'settings'))) {
+    return NextResponse.json({ error: 'Requires settings capability' }, { status: 403 })
+  }
+
   try {
     const url = new URL(request.url)
     const status = url.searchParams.get('status')

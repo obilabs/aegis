@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { pool } from '@/lib/db'
 import { getOrgId, getUserId } from '@/lib/org'
+import { toSafeHtml } from '@/lib/article-render'
 
 export async function GET(
   request: NextRequest,
@@ -42,6 +43,7 @@ export async function GET(
         a.slug,
         a.summary,
         a.content,
+        a.content_format,
         a.category_id,
         a.visibility,
         a.visible_to_roles,
@@ -202,7 +204,13 @@ export async function GET(
     void visible_to_departments; void visible_to_job_titles; void visible_to_employment_types
     void visible_to_contact_groups; void author_id
 
-    const responsePayload = { ...articleResponse, can_edit: canEdit }
+    // Sanitize server-side so the client's dangerouslySetInnerHTML is defensible
+    // (design §10.4). Never return raw kb_articles.content.
+    const responsePayload = {
+      ...articleResponse,
+      content: toSafeHtml(article.content, article.content_format),
+      can_edit: canEdit,
+    }
 
     // Increment view count
     await pool.query(`
