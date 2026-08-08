@@ -15,7 +15,7 @@ const nextConfig = {
   // this, the standalone output misses workspace packages because Next assumes
   // node_modules is right above the app directory.
   outputFileTracingRoot: process.env.DOCKER_BUILD
-    ? require('path').join(__dirname, '../../')
+    ? __dirname
     : undefined,
 
   images: {
