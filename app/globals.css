@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Theme: Emerald Dark
+
+   Brand colors are defined as CSS variables so the entire color scheme
+   can be changed by swapping this block. Components use Tailwind's
+   `brand-*` utilities (mapped in tailwind.config.ts) instead of
+   hardcoded color names like `emerald-*`.
+   ========================================================================== */
+
+:root {
+  --foreground: #111827;
+  --background: #ffffff;
+
+  /* Brand palette — "Emerald Dark" */
+  --brand-50:  #ecfdf5;
+  --brand-100: #d1fae5;
+  --brand-200: #a7f3d0;
+  --brand-300: #6ee7b7;
+  --brand-400: #34d399;
+  --brand-500: #10b981;
+  --brand-600: #059669;
+  --brand-700: #047857;
+  --brand-800: #065f46;
+  --brand-900: #064e3b;
+  --brand-950: #022c22;
+
+  /* Semantic aliases */
+  --primary: var(--brand-500);
+  --primary-hover: var(--brand-600);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
