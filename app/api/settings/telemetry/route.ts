@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Get telemetry settings
-  const org = await queryOne<{ instance_id: string; license_key: string; telemetry_tier: number }>(
+  const org = await queryOne<{ instance_id: string; license_key: string | null; telemetry_tier: number }>(
     'SELECT instance_id, license_key, telemetry_tier FROM organizations WHERE id = $1',
     [orgId]
   )
@@ -88,12 +88,16 @@ export async function GET(request: NextRequest) {
   // chars. Matches the wire format the heartbeat sender would post if it
   // fired right now. Operator audits the install — sees the same thing
   // the control plane would see.
-  const previewPayload = org?.instance_id && org?.license_key
+  // license_key is null on community installs — the preview still renders
+  // (license_key: null on the wire), matching what would actually be sent.
+  const previewPayload = org?.instance_id
     ? buildInstallPing(
         org.instance_id,
-        org.license_key.length > 8
-          ? `${org.license_key.slice(0, 8)}...`
-          : org.license_key,
+        org.license_key
+          ? (org.license_key.length > 8
+              ? `${org.license_key.slice(0, 8)}...`
+              : org.license_key)
+          : null,
       )
     : null
 

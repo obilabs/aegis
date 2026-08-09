@@ -40,26 +40,6 @@ export function generateInstanceId(): string {
 }
 
 /**
- * Generate a human-readable license key.
- * Format: AEGIS-XXXX-XXXX-XXXX-XXXX (uppercase alphanumeric, no ambiguous chars)
- * Users can enter this on the web portal to claim their instance
- * for support, commercial features, or community recognition.
- */
-export function generateLicenseKey(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O/1/I
-  const segments: string[] = []
-  for (let s = 0; s < 4; s++) {
-    let segment = ''
-    const bytes = randomBytes(4)
-    for (let i = 0; i < 4; i++) {
-      segment += chars[bytes[i] % chars.length]
-    }
-    segments.push(segment)
-  }
-  return `AEGIS-${segments.join('-')}`
-}
-
-/**
  * Get or create the instance ID for an organization.
  */
 export async function getInstanceId(organizationId: string): Promise<string> {
@@ -82,12 +62,18 @@ export async function getInstanceId(organizationId: string): Promise<string> {
 // Payload Builders (no PII)
 // ---------------------------------------------------------------------------
 
-/** Tier 0: Install ping (sent once) */
-export function buildInstallPing(instanceId: string, licenseKey: string): Record<string, unknown> {
+/**
+ * Tier 0: Install ping (sent once).
+ *
+ * `license_key` is null for community installs — Aegis no longer self-mints
+ * a key at setup (the old AEGIS-* mint had no server-side landing and was
+ * deleted). A key exists only when issued by the control plane.
+ */
+export function buildInstallPing(instanceId: string, licenseKey: string | null): Record<string, unknown> {
   return {
     instance_id: instanceId,
     version: APP_VERSION,
-    license_key: licenseKey,
+    license_key: licenseKey ?? null,
     installed_at: new Date().toISOString(),
   }
 }
@@ -255,11 +241,13 @@ export async function sendTelemetry(
 
 /** Send the Tier 0 install ping (called from setup/complete) */
 export async function sendInstallPing(organizationId: string): Promise<void> {
-  const org = await queryOne<{ instance_id: string; license_key: string }>(
+  const org = await queryOne<{ instance_id: string; license_key: string | null }>(
     'SELECT instance_id, license_key FROM organizations WHERE id = $1',
     [organizationId]
   )
-  if (!org?.instance_id || !org?.license_key) return
+  // Community installs have license_key = NULL — the ping still fires (when
+  // consented); only a missing instance identity suppresses it.
+  if (!org?.instance_id) return
   const payload = buildInstallPing(org.instance_id, org.license_key)
   await sendTelemetry(organizationId, 0, 'install_ping', payload)
 }
