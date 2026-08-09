@@ -1,39 +1,70 @@
 /**
- * License heartbeat — periodic call to apps/web's `/api/instances/validate`.
+ * Licence heartbeat — via the shared `@obilabs/licensing` client.
  *
- * Spec: openspec/changes/telemetry-heartbeat-audit/
+ * Aegis is fully open-source and community-licensed: NOTHING is gated when
+ * the operator does not pay (only the MSP portal, MTP, gates on payment). So
+ * this module is a HEARTBEAT + donor/supporter attribution that NEVER blocks
+ * or degrades the product — the same fail-open posture Helios ships. It:
  *
- * Pre-2026-06-10 the client only validated its license at boot. Then
- * silence — apps/web's `instances.last_heartbeat_at` went stale (verified
- * 5 days silent on clockworx 2026-06-10). The fix: schedule a 20-minute
- * interval that fires `validateLicense()` for the lifetime of the
- * process. apps/web's validate handler ALSO writes a row to
- * `instance_heartbeats` on every call (success or failure), so the audit
- * history catches up too.
+ *   - routes the actual check through `validateLicense()` (the one sanctioned
+ *     path to the control plane — no more hand-rolled fetch that only looked
+ *     at `res.ok` and never read the response body),
+ *   - applies `applyFailOpenPolicy` (valid → run; unknown → run silently on
+ *     the last-good cache; invalid → run + warn, degrade NOTHING),
+ *   - persists ONLY authoritative answers (`isPersistableStatus`), so a
+ *     transient outage is never written as a licence verdict,
+ *   - loads the last-good snapshot before the first check so an `unknown`
+ *     result carries a grace anchor (`authoritativeAt`).
  *
- * Cadence: `LICENSE_HEARTBEAT_INTERVAL_MS` env var, default 1,200,000 ms
- * (20 min). Floor: 5 min — sub-floor values clamp + log a warning.
+ * Consent gating is unchanged: the validate call doubles as the
+ * heartbeat-audit appender on the control plane, so it stays behind
+ * `getEffectiveTelemetryState()` (PRINCIPLES.md #2) exactly as before.
  *
- * Community installs (no `license_key` on `organizations`) skip the
- * heartbeat; they have nothing to validate against. Licensed installs
- * (post-`/api/instances/exchange`) heartbeat for the lifetime of the
- * process.
+ * Community installs carry `license_key = NULL` on `organizations` and never
+ * phone home from here — there is nothing to validate. (The old self-minted
+ * `AEGIS-*` key path was dead code with no server-side landing; deleted.)
+ *
+ * FAIL-OPEN IS NON-NEGOTIABLE: no code path in this file may throw out of the
+ * heartbeat or block app startup. `startLicenseHeartbeat()` is synchronous
+ * fire-and-forget; `fireOnce()` catches everything.
  */
 
-import { queryOne } from '@/lib/db'
+import {
+  validateLicense,
+  applyFailOpenPolicy,
+  isPersistableStatus,
+  type LicenseResult,
+  type CachedLicenseSnapshot,
+} from '@obilabs/licensing'
+import { query, queryOne } from '@/lib/db'
 import { getEffectiveTelemetryState } from '@/lib/telemetry-consent'
 
 const DEFAULT_INTERVAL_MS = 20 * 60 * 1000 // 20 minutes
 const FLOOR_INTERVAL_MS = 5 * 60 * 1000    // 5 minutes
 const FETCH_TIMEOUT_MS = 30_000
 
-function deriveValidateUrl(): string {
-  if (process.env.LICENSE_URL) return process.env.LICENSE_URL
-  // Derive from TELEMETRY_URL by swapping the path. Same host = same
-  // apps/web deployment, which is the canonical pattern.
-  const telemetryUrl = process.env.TELEMETRY_URL
-    || 'https://api.obilabs.dev/api/instances/heartbeat'
-  return telemetryUrl.replace(/\/api\/instances\/heartbeat$/, '/api/instances/validate')
+const APP_VERSION =
+  process.env.npm_package_version || process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0'
+
+// Community feature floor. Aegis never gates on the licence — every install
+// has the full product — so the floor is empty and the control plane's
+// `features` map (returned on a `valid` donor/supporter answer) is overlay
+// for DISPLAY/attribution only (e.g. a future supporter badge). Nothing in
+// the app may branch product behaviour on these values.
+const COMMUNITY_FEATURES: Record<string, boolean> = {}
+
+/**
+ * Derive the control plane BASE URL. The shared client appends
+ * `/api/instances/validate` itself, so we strip any endpoint path off the
+ * legacy env vars (LICENSE_URL used to hold the full validate URL; the
+ * TELEMETRY_URL default holds the heartbeat URL — same host, same deployment).
+ */
+function deriveBaseUrl(): string {
+  const explicit = process.env.LICENSE_URL
+  if (explicit) return explicit.replace(/\/api\/instances\/validate\/?$/, '')
+  const telemetryUrl =
+    process.env.TELEMETRY_URL || 'https://api.obilabs.dev/api/instances/heartbeat'
+  return telemetryUrl.replace(/\/api\/instances\/heartbeat\/?$/, '')
 }
 
 function clampInterval(): number {
@@ -50,24 +81,77 @@ function clampInterval(): number {
 
 let _interval: NodeJS.Timeout | null = null
 let _shutdownController: AbortController | null = null
+let _lastResult: LicenseResult | null = null
+let _cachedSnapshot: CachedLicenseSnapshot | null = null
+let _snapshotLoaded = false
 
 /**
- * Fire one validate call. Reads the org's instance_id + license_key from
- * the DB so config changes mid-process are picked up on the next cycle.
- * Fire-and-forget — caller does not await; failures log but never throw.
+ * Parse a stored snapshot. Only an authoritative (valid/invalid) snapshot is
+ * a legitimate grace anchor — anything else is discarded.
+ */
+function parseSnapshot(raw: string | null | undefined): CachedLicenseSnapshot | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as CachedLicenseSnapshot
+    if (parsed?.state === 'valid' || parsed?.state === 'invalid') return parsed
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Persist the last authoritative answer into `organizations.settings`
+ * (JSONB key `license_state`). Additive write — no other settings key is
+ * touched. Best-effort: a failed write never surfaces to the heartbeat.
+ */
+async function storeSnapshot(orgId: string, snapshot: CachedLicenseSnapshot): Promise<void> {
+  try {
+    await query(
+      `UPDATE organizations
+          SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{license_state}', $1::jsonb)
+        WHERE id = $2`,
+      [JSON.stringify(snapshot), orgId],
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(`[license-heartbeat] could not persist licence snapshot: ${message}`)
+  }
+}
+
+/**
+ * Fire one validate call. Reads the org's instance_id + license_key from the
+ * DB so config changes mid-process are picked up on the next cycle.
+ * Fire-and-forget — caller does not await; failures log but NEVER throw.
  */
 async function fireOnce(): Promise<void> {
   try {
-    const org = await queryOne<{ id: string; instance_id: string; license_key: string | null }>(
-      `SELECT id, instance_id, license_key FROM organizations LIMIT 1`,
+    const org = await queryOne<{
+      id: string
+      instance_id: string | null
+      license_key: string | null
+      license_state: string | null
+    }>(
+      `SELECT id, instance_id, license_key,
+              settings #>> '{license_state}' AS license_state
+         FROM organizations LIMIT 1`,
     )
+
+    // Load the last-good snapshot once, on the first cycle, so the very
+    // first `unknown` result already carries its grace anchor.
+    if (org && !_snapshotLoaded) {
+      _cachedSnapshot = parseSnapshot(org.license_state)
+      _snapshotLoaded = true
+    }
+
     if (!org?.instance_id || !org?.license_key) {
-      // Community install or pre-setup; nothing to validate yet.
+      // Community install (license_key = NULL) or pre-setup — nothing to
+      // validate, no phone-home. Fail-safe to community mode.
       return
     }
 
     // Telemetry consent gate (PRINCIPLES.md #2). The validate call doubles
-    // as the heartbeat-audit appender on apps/web — an operator who
+    // as the heartbeat-audit appender on the control plane — an operator who
     // disabled telemetry from /portal/settings (or via TELEMETRY_ENABLED=
     // false env) should not be phoning home, even for "license validation."
     // License continues to work locally; just isn't re-checked until the
@@ -77,41 +161,63 @@ async function fireOnce(): Promise<void> {
 
     _shutdownController?.abort()
     _shutdownController = new AbortController()
-    const timer = setTimeout(() => _shutdownController?.abort(), FETCH_TIMEOUT_MS)
 
-    try {
-      const url = deriveValidateUrl()
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: org.instance_id,
-          license_key: org.license_key,
-          version: process.env.npm_package_version
-            || process.env.NEXT_PUBLIC_APP_VERSION
-            || '0.1.0',
-        }),
-        signal: _shutdownController.signal,
-      })
-      if (!res.ok) {
-        console.warn(`[license-heartbeat] non-OK response: ${res.status}`)
+    // validateLicense NEVER throws — every failure mode (DNS, timeout, 5xx,
+    // malformed body) resolves to a three-state LicenseResult. This is the
+    // g3 fix: the old code only checked res.ok and never read the body.
+    const result = await validateLicense(org.license_key, {
+      baseUrl: deriveBaseUrl(),
+      instanceId: org.instance_id,
+      version: APP_VERSION,
+      timeoutMs: FETCH_TIMEOUT_MS,
+      cached: _cachedSnapshot,
+      signal: _shutdownController.signal,
+    })
+    _lastResult = result
+
+    // Fail-open: `allow` is ALWAYS true for Aegis. We only surface a warning
+    // on an authoritative `invalid` (revoked/expired/…) — and even then we
+    // degrade nothing, because there is nothing gated to degrade.
+    const decision = applyFailOpenPolicy(result)
+    if (decision.warn) {
+      console.warn(`[license-heartbeat] ${decision.explanation}`)
+    } else if (result.state === 'valid') {
+      console.log(
+        `[license-heartbeat] state=valid plan=${result.plan ?? 'community'} (${result.reason})`
+      )
+    }
+    // `unknown` is deliberately silent — an outage of the control plane is
+    // not the operator's problem and must not spam their logs.
+
+    // Persist ONLY authoritative answers — an `unknown` (outage/timeout)
+    // must never be written as a licence status. This is the canonical fix
+    // for "unreachable persisted as revoked".
+    if (isPersistableStatus(result)) {
+      const snapshot: CachedLicenseSnapshot = {
+        state: result.state as 'valid' | 'invalid',
+        reason: result.reason,
+        product: result.product,
+        plan: result.plan,
+        expiresAt: result.expiresAt,
+        authoritativeAt: result.authoritativeAt ?? result.checkedAt,
       }
-    } finally {
-      clearTimeout(timer)
+      _cachedSnapshot = snapshot
+      await storeSnapshot(org.id, snapshot)
     }
   } catch (err) {
-    // Network errors, AbortError on shutdown, DB errors — all logged,
-    // never thrown. The heartbeat is best-effort.
+    // DB errors, AbortError on shutdown — all logged, never thrown. The
+    // heartbeat is best-effort; the product's availability never depends on it.
     const message = err instanceof Error ? err.message : String(err)
     console.warn(`[license-heartbeat] fire failed: ${message}`)
   }
 }
 
 /**
- * Start the recurring license heartbeat. Idempotent — calling twice
- * returns without rescheduling. Survives the lifetime of the process.
+ * Start the recurring license heartbeat. Idempotent — calling twice returns
+ * without rescheduling. Synchronous and fire-and-forget: it can never block
+ * or fail app startup.
  *
- * SIGTERM aborts any in-flight fetch via the shared AbortController.
+ * SIGTERM aborts any in-flight validation via the shared AbortController.
  */
 export function startLicenseHeartbeat(): void {
   if (_interval) return
@@ -133,4 +239,39 @@ export function startLicenseHeartbeat(): void {
   }
   process.once('SIGTERM', shutdown)
   process.once('SIGINT', shutdown)
+}
+
+// ---------------------------------------------------------------------------
+// Null-safe read accessors — display/attribution only, NEVER gating.
+// ---------------------------------------------------------------------------
+
+/** Current plan (donor/community/…), or 'community' when unknown. Never gates. */
+export function getLicensePlan(): string {
+  return _lastResult?.plan ?? 'community'
+}
+
+/**
+ * Feature map for display. Null-safe: community floor overlaid with the
+ * control plane's `features` when we have a valid result. Aegis does not gate
+ * on any of these — they exist for parity + future UI (e.g. supporter badge).
+ */
+export function getLicenseFeatures(): Record<string, boolean> {
+  const fromCp = _lastResult?.features ?? null
+  if (!fromCp) return { ...COMMUNITY_FEATURES }
+  // Only copy boolean-valued keys; the wire type is Record<string, unknown>.
+  const overlay: Record<string, boolean> = {}
+  for (const [k, v] of Object.entries(fromCp)) {
+    if (typeof v === 'boolean') overlay[k] = v
+  }
+  return { ...COMMUNITY_FEATURES, ...overlay }
+}
+
+/** Display-only feature lookup. Defaults to the community floor (false). */
+export function hasLicenseFeature(feature: string): boolean {
+  return getLicenseFeatures()[feature] ?? false
+}
+
+/** True when the control plane last confirmed a valid (donor/supporter) licence. */
+export function isLicensed(): boolean {
+  return _lastResult?.state === 'valid'
 }

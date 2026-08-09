@@ -7,7 +7,7 @@ import { seedPolicyArticles } from '@/lib/seed-policies'
 import { seedTrainingArticles } from '@/lib/seed-training'
 import { seedProcedureArticles } from '@/lib/seed-procedures'
 import { getPresetsForProfile } from '@/lib/features'
-import { generateInstanceId, generateLicenseKey, sendInstallPing, sendSetupSnapshot, setTelemetryTier } from '@/lib/telemetry'
+import { generateInstanceId, sendInstallPing, sendSetupSnapshot, setTelemetryTier } from '@/lib/telemetry'
 import { setTelemetryEnabled } from '@/lib/telemetry-consent'
 
 /**
@@ -39,22 +39,23 @@ export async function POST(request: NextRequest) {
 
     const orgName = company_name?.trim() || 'My Organization'
     const instanceId = generateInstanceId()
-    const licenseKey = generateLicenseKey()
     const tier = typeof telemetry_tier === 'number' ? Math.min(Math.max(telemetry_tier, 0), 2) : 0
 
     // Compute preset feature defaults, then merge with admin overrides from the wizard
     const { defaults: presetDefaults } = getPresetsForProfile(industry, team_size, primary_use_case)
     const mergedFeatures = { ...presetDefaults, ...(features || {}) }
 
-    // Create organization with instance_id, license_key, and telemetry tier
+    // Create organization with instance_id and telemetry tier.
+    // license_key stays NULL — community installs have no key and fail safe
+    // to community mode. A key is only ever issued by the control plane
+    // (the old self-minted AEGIS-* key had no server-side landing; deleted).
     const orgResult = await pool.query(
-      `INSERT INTO organizations (name, instance_id, license_key, telemetry_tier, settings)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO organizations (name, instance_id, telemetry_tier, settings)
+       VALUES ($1, $2, $3, $4)
        RETURNING id`,
       [
         orgName,
         instanceId,
-        licenseKey,
         tier,
         JSON.stringify({
           industry: industry || 'other',

@@ -161,7 +161,7 @@ export default function TelemetrySettingsPage() {
               {licenseKey}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              Use this key to claim your instance on the Aegis portal for support or commercial features.
+              Issued by the ObiLabs control plane. Community installs have no key — every feature works without one.
             </p>
           </div>
         )}
