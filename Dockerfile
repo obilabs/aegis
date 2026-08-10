@@ -1,11 +1,11 @@
 # Standalone Docker build for the aegis app (extracted from the obilabs monorepo).
 #
-# The @obilabs/* packages (email, api-scopes, documents) resolve from GitHub
-# Packages, authenticated by an NPM_TOKEN BuildKit secret (never baked into a
-# layer). Build with:  NPM_TOKEN=$(gh auth token) docker compose build
+# The @obilabs/* packages (email, api-scopes, documents) are PUBLIC on npmjs
+# under the personal @obilabs scope, so they install anonymously — no token, no
+# BuildKit secret, no registry override. Build with plain: docker compose build
 #
 # Build flow:
-#   1. Copy package.json + lockfile + .npmrc (cache layer), install from registry
+#   1. Copy package.json + lockfile (cache layer), install from npmjs
 #   2. Copy source, build Next.js standalone output (flat: .next/standalone/server.js)
 #   3. Runner stage copies the standalone output + DB schema/migrations
 
@@ -21,10 +21,9 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 RUN corepack enable && corepack prepare pnpm@10.19.0 --activate
 
-# ---- Stage 1: deps (cache layer) — @obilabs/* from GH Packages via secret -----
-COPY package.json pnpm-lock.yaml .npmrc ./
-RUN --mount=type=secret,id=npm_token \
-    NPM_TOKEN="$(cat /run/secrets/npm_token)" pnpm install --frozen-lockfile
+# ---- Stage 1: deps (cache layer) — @obilabs/* public on npmjs, no token ------
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # ---- Stage 2: source + build --------------------------------------------------
 COPY . .

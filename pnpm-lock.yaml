@@ -1117,16 +1117,16 @@ packages:
     engines: {node: '>= 8'}
 
   '@obilabs/api-scopes@0.1.1':
-    resolution: {integrity: sha512-UXGn4y7uVhd8OZ93ActuLzo070jcBaws8lAKM7qjbbwyEcUTuLd0lUuCbpz5UT+mZDmnxzVki7cMHLhyRSsPRw==, tarball: https://npm.pkg.github.com/download/@obilabs/api-scopes/0.1.1/e7048e6adbf22c2178bef1d4a31de08d67ce9f88}
+    resolution: {integrity: sha512-qCleWHRaz98KDdAtvfa51YpSowJwdZFCUz5THrFyadUO5vAaNjbv+IFT3ITzcqt6jPr9oRoy6WglVnHO89TCmA==}
 
   '@obilabs/documents@0.1.1':
-    resolution: {integrity: sha512-fgYtp/Eqgf7DFXsTNPQt6LyidrktPsvc6otJ1/rV0JQIzsi3XZW3Wl9LYr2/HnFlhSkYpr+E3cUQLo68DNHj2w==, tarball: https://npm.pkg.github.com/download/@obilabs/documents/0.1.1/8e009a2e412db001d16c1f4f534c964f58d4abe8}
+    resolution: {integrity: sha512-SVC/KpTJXeq3hZ2A27yOFV58WZedh0svHaX84uG6oPNW+8cjB/IMJr7l5HaDfYJONs5Cq0DuNUac0guslnItTQ==}
 
   '@obilabs/email@0.1.0':
-    resolution: {integrity: sha512-Yp2h0iJLPEe6bEGA+hCbNwikD20mTtajZeAws5hMBRcx3wC8dMhqHGNr9+OYJCwNR6Sww+k8CJ8o0NdkI7o1WQ==, tarball: https://npm.pkg.github.com/download/@obilabs/email/0.1.0/690e03610b2e38fc5ea59b5f6cd971090f4d425d}
+    resolution: {integrity: sha512-dFIFFAvjakK3K+wupUBEHSoqpv4jOuf8KJoyR2la6uMQ6MIU3PZNISxJLa5Z02l4SFTlnosoEJbN1q5YAB+pcw==}
 
   '@obilabs/licensing@0.1.0':
-    resolution: {integrity: sha512-kTxhCJqYnJYoXU9dTCX9ijyRPDeh1eu5f44RMkbHbmejjoRmpFkdsxWm+AUcPNm61d4o+Up20iHLTCJQISxpgw==, tarball: https://npm.pkg.github.com/download/@obilabs/licensing/0.1.0/d64680334190936a7f40ae45edf417fd07e6c14a}
+    resolution: {integrity: sha512-4VJy81GUwPvV4wYqiE6pEhNE4dUwMYWT9ZJqUsuyI/lg23WqD1n/oE1GbRryIWr2XRw1MnZF5sS16C/aoQwydg==}
 
   '@peculiar/asn1-android@2.8.0':
     resolution: {integrity: sha512-skLbS+IOGv1lUgDqtChr8xvtvEr3HMse/JGBaL2r1J1o/n7a8wqOrovMtlRq/UXLhxvmLaONP67hwtshgzwfzA==}
