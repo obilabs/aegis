@@ -55,14 +55,12 @@ services:
   aegis:
     image: ghcr.io/obilabs/aegis:${AEGIS_VERSION:-0.1.0}
     build:
-      # Standalone repo: @obilabs/* install from GitHub Packages via the
-      # npm_token BuildKit secret. Build with NPM_TOKEN=$(gh auth token).
+      # Standalone repo: @obilabs/* are public on npmjs — install anonymously,
+      # no token or BuildKit secret. Build with plain: docker compose build
       context: .
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:8080}
-      secrets:
-        - npm_token
     container_name: aegis
     expose:
       - "3000"
@@ -241,8 +239,3 @@ services:
 networks:
   aegis:
     driver: bridge
-
-secrets:
-  # GitHub Packages auth for @obilabs/* installs, read from host NPM_TOKEN.
-  npm_token:
-    environment: NPM_TOKEN
