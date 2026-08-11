@@ -6,3 +6,9 @@ node_modules/
 dist/
 .turbo/
 data/
+
+# R&D logs (grant docs — local only, per CLAUDE.md)
+.rd_log/
+
+# TS incremental build info
+tsconfig.tsbuildinfo
