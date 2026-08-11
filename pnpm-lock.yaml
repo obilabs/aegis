@@ -42,8 +42,8 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@obilabs/licensing':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.2
+        version: 0.1.2
       '@scalar/nextjs-api-reference':
         specifier: ^0.9.19
         version: 0.9.26(next@15.5.23(@babel/core@7.29.7)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
@@ -1125,8 +1125,8 @@ packages:
   '@obilabs/email@0.1.0':
     resolution: {integrity: sha512-dFIFFAvjakK3K+wupUBEHSoqpv4jOuf8KJoyR2la6uMQ6MIU3PZNISxJLa5Z02l4SFTlnosoEJbN1q5YAB+pcw==}
 
-  '@obilabs/licensing@0.1.0':
-    resolution: {integrity: sha512-4VJy81GUwPvV4wYqiE6pEhNE4dUwMYWT9ZJqUsuyI/lg23WqD1n/oE1GbRryIWr2XRw1MnZF5sS16C/aoQwydg==}
+  '@obilabs/licensing@0.1.2':
+    resolution: {integrity: sha512-Znn4v4plHvgll8scjXiSOsfuFg7t6tJ6AlG6yM2Vev+ZzF46MEJ1rOXqwcIq3k+dSwQU92YOqY5rY/QIDR6LBA==}
 
   '@peculiar/asn1-android@2.8.0':
     resolution: {integrity: sha512-skLbS+IOGv1lUgDqtChr8xvtvEr3HMse/JGBaL2r1J1o/n7a8wqOrovMtlRq/UXLhxvmLaONP67hwtshgzwfzA==}
@@ -4535,7 +4535,7 @@ snapshots:
       - react-dom
       - supports-color
 
-  '@obilabs/licensing@0.1.0': {}
+  '@obilabs/licensing@0.1.2': {}
 
   '@peculiar/asn1-android@2.8.0':
     dependencies:
