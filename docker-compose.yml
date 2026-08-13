@@ -123,6 +123,11 @@ services:
       # License re-validation cadence. Empty => 20 min default; lib/license-
       # heartbeat.ts floors it at 5 min regardless of what is set here.
       - LICENSE_HEARTBEAT_INTERVAL_MS=${LICENSE_HEARTBEAT_INTERVAL_MS:-}
+      # Community liveness "alive ping" cadence (lib/alive-ping.ts, arrives with
+      # feature/telemetry-alive-ping). Empty => 24h default; floored at 1h. Kept
+      # here so all telemetry-env knobs live in one place; harmless until that
+      # branch merges (empty passthrough falls through to the code default).
+      - ALIVE_PING_INTERVAL_MS=${ALIVE_PING_INTERVAL_MS:-}
     depends_on:
       db:
         condition: service_healthy
