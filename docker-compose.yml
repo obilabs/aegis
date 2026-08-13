@@ -112,6 +112,17 @@ services:
       # default-on (with in-app consent flow); set to "false" to hard-
       # disable all outbound telemetry regardless of DB setting.
       - TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-}
+      # Phone-home endpoint overrides. Unset (default) => the obilabs control
+      # plane at https://api.obilabs.dev. A self-hoster points these at their own
+      # control plane WITHOUT editing this file. Empty falls through to the code
+      # default in lib/telemetry.ts + lib/license-heartbeat.ts. TELEMETRY_URL is
+      # the usage/heartbeat POST target; LICENSE_URL is the license re-validation
+      # URL (the base is derived from it, stripping /api/instances/validate).
+      - TELEMETRY_URL=${TELEMETRY_URL:-}
+      - LICENSE_URL=${LICENSE_URL:-}
+      # License re-validation cadence. Empty => 20 min default; lib/license-
+      # heartbeat.ts floors it at 5 min regardless of what is set here.
+      - LICENSE_HEARTBEAT_INTERVAL_MS=${LICENSE_HEARTBEAT_INTERVAL_MS:-}
     depends_on:
       db:
         condition: service_healthy
