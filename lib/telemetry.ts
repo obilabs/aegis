@@ -6,6 +6,14 @@
  *   Tier 1 (opt-in):  Setup snapshot — {industry, team_size, use_case, features}
  *   Tier 2 (opt-in):  Usage heartbeat — {module_counts, feature_adoption, ranges}
  *
+ * Plus a Tier-0 RECURRING liveness beacon (the "alive ping" — see buildAlivePing /
+ * sendAlivePing, scheduled by lib/alive-ping.ts). Community installs carry no licence and
+ * so never emit the recurring /api/instances/validate heartbeat; without a recurring
+ * signal they drop out of the control plane's active-instance count 30 days after install.
+ * The alive ping is the minimal {instance_id, version, license_key?} install-ping shape,
+ * sent on a schedule for community installs only (licensed installs already refresh
+ * last_heartbeat_at via validate — no double-send). Same consent gate as every sender.
+ *
  * Core promises:
  *   - No PII ever (no emails, names, IPs, org names, domains)
  *   - Every payload logged to telemetry_log before sending
@@ -76,6 +84,23 @@ export function buildInstallPing(instanceId: string, licenseKey: string | null):
     license_key: licenseKey ?? null,
     installed_at: new Date().toISOString(),
   }
+}
+
+/**
+ * Tier 0: Recurring liveness ping ("alive ping").
+ *
+ * The minimal install-ping shape MINUS `installed_at` — a recurring beacon whose only
+ * job is to refresh `instances.last_heartbeat_at` on the control plane so a still-running
+ * community install stays inside the `active_*_30d` window. No usage, no PII. Product is
+ * derived server-side from the instance id, so it is deliberately NOT sent here.
+ */
+export function buildAlivePing(instanceId: string, licenseKey: string | null): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    instance_id: instanceId,
+    version: APP_VERSION,
+  }
+  if (licenseKey) payload.license_key = licenseKey
+  return payload
 }
 
 /** Tier 1: One-time setup snapshot */
@@ -250,6 +275,28 @@ export async function sendInstallPing(organizationId: string): Promise<void> {
   if (!org?.instance_id) return
   const payload = buildInstallPing(org.instance_id, org.license_key)
   await sendTelemetry(organizationId, 0, 'install_ping', payload)
+}
+
+/**
+ * Send the recurring Tier-0 liveness ping ("alive ping").
+ *
+ * Community-only by design: an install with a non-null `license_key` already refreshes
+ * `instances.last_heartbeat_at` via the ~20-min licence validate (lib/license-heartbeat.ts),
+ * so it MUST NOT also alive-ping — that would double the control-plane rows and load for no
+ * gain. This is the mirror image of the licence heartbeat's own community early-return:
+ * where that sends nothing for community, this sends the minimal liveness. Consent is
+ * enforced inside sendTelemetry (the same master kill-switch as every other sender).
+ */
+export async function sendAlivePing(organizationId: string): Promise<void> {
+  const org = await queryOne<{ instance_id: string; license_key: string | null }>(
+    'SELECT instance_id, license_key FROM organizations WHERE id = $1',
+    [organizationId]
+  )
+  if (!org?.instance_id) return
+  // Licensed installs emit liveness via validate — don't double-send.
+  if (org.license_key) return
+  const payload = buildAlivePing(org.instance_id, org.license_key)
+  await sendTelemetry(organizationId, 0, 'alive_ping', payload)
 }
 
 /** Send the Tier 1 setup snapshot (called from setup/complete if tier >= 1) */
