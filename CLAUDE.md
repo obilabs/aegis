@@ -289,9 +289,12 @@ hide the footer entirely on air-gapped installs.
   longer exists as a distinct route. Deleted 2026-06-09.
 - **Don't** add a Settings landing tile whose `href` doesn't resolve
   to a real `page.tsx`. The CI gate
-  `Verify Settings landing links resolve` in `build-aegis.yml`
+  `Verify Settings landing links resolve` in `.github/workflows/ci.yml`
   catches this — if you add a tile for a feature still in flight,
-  the page MUST exist as at least a stub first.
+  the page MUST exist as at least a stub first. (The gate ran in
+  `build-aegis.yml` before the repo split, i.e. only on push-to-main;
+  it now runs per-PR, since a gate that fires after merge has already
+  let the bug in.)
 - **Do** use `VendorFooter` for any outbound link from apps/aegis
   to apps/web. Never hardcode `https://api.obilabs.dev` in a
   component — the env var is the source of truth.

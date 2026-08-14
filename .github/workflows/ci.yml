@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  # NOTE: deliberately NO `branches:` filter here. That filter matches the
+  # *base* branch, so `branches: [main]` silently skips CI on any stacked PR
+  # (one based on another feature branch). That bit us on obilabs-platform#92 —
+  # the only PR in a batch carrying runtime code was the one that got no
+  # typecheck and no tests. Every PR gets gated here, whatever its base.
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Type Check & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # Version intentionally omitted — pnpm reads it from package.json
+        # `packageManager: pnpm@10.19.0`. Specifying both causes
+        # ERR_PNPM_BAD_PM_VERSION when they don't match exactly.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # matches the Dockerfile's node:20-alpine
+          cache: pnpm
+
+      - name: Install dependencies
+        # @obilabs/* resolve from public npmjs — this is a standalone repo, no
+        # workspace and no token needed.
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Settings landing links resolve
+        # portal-nav-cleanup: every href in app/portal/settings/page.tsx that
+        # starts with /portal/ MUST resolve to a real page.tsx on disk. Catches
+        # the bug class where a tile is added or kept but the backing page never
+        # exists. See openspec/specs/portal-nav-integrity/spec.md.
+        #
+        # Uses POSIX ERE rather than the `grep -oP ... \K` form this gate had in
+        # the monorepo: -P is a GNU extension that isn't available in every grep
+        # build, so the portable form is the safer gate.
+        run: |
+          set -euo pipefail
+          settings_page="app/portal/settings/page.tsx"
+          hrefs=$(grep -oE "href: *['\"]/portal[^'\"]+" "$settings_page" \
+                    | sed -E "s/.*['\"]//; s/\?.*//" \
+                    | sort -u)
+          broken=$(echo "$hrefs" | while IFS= read -r path; do
+                     [ -n "$path" ] || continue
+                     test -f "app${path}/page.tsx" || echo "$path"
+                   done)
+          if [ -n "$broken" ]; then
+            echo "::error file=${settings_page}::Settings landing has broken link(s):"
+            echo "$broken" | while IFS= read -r p; do
+              echo "::error file=${settings_page}::  ${p} → no page.tsx at app${p}/page.tsx"
+            done
+            echo "::error::Either remove the tile from the Settings landing or create the backing page. See openspec/specs/portal-nav-integrity/spec.md."
+            exit 1
+          fi
+          echo "All Settings landing links resolve ($(echo "$hrefs" | wc -l) checked)."
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Unit tests
+        run: pnpm test
