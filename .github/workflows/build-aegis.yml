@@ -1,0 +1,84 @@
+name: Build Aegis
+
+# Ported from the pre-split monorepo workflow (obilabs-platform
+# .github/workflows/build-aegis.yml, dropped in 18f53f7 "drop extracted-aegis CI
+# remnants" and never re-added here — this repo had no CI at all until now).
+#
+# Differences from the monorepo original, all because this is a standalone repo:
+#   - build context is the repo root, Dockerfile is ./Dockerfile
+#   - no workspace: @obilabs/* resolve from public npmjs, so no root
+#     pnpm-lock.yaml / pnpm-workspace.yaml need to be in the context
+#   - the Settings-landing-link gate moved to ci.yml, where it runs per-PR
+#     instead of only on push-to-main (a release gate that only fires after
+#     merge is a gate that already let the bug in)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'openspec/**'
+      - '.rd_log/**'
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Version tag override (e.g. 0.2.0). Defaults to package.json version.'
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }} # obilabs/aegis -> ghcr.io/obilabs/aegis
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine version
+        id: version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          OVERRIDE="${{ github.event.inputs.version_override }}"
+          VERSION="${OVERRIDE:-$PKG_VERSION}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest
+            type=sha,prefix=
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.AEGIS_PUBLIC_URL || 'https://aegis.agu.ca' }}
