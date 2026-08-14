@@ -13,6 +13,19 @@
 export async function register() {
   // Only run on the server (not during build or edge runtime)
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Alive ping: recurring community-liveness beacon. Started FIRST and in its own
+    // try/catch — deliberately BEFORE the pg-boss worker registrations below. Community
+    // installs (the ones this beacon exists to count) are exactly where pg-boss can fail
+    // to register on a fresh/ drifted install, and a pg-boss failure in the main try block
+    // would skip everything after it. The liveness beacon must never depend on that. It is
+    // setInterval-based and strictly fail-open. See lib/alive-ping.ts.
+    try {
+      const { startAlivePing } = await import('./lib/alive-ping')
+      startAlivePing()
+    } catch (err) {
+      console.error('[instrumentation] Failed to start alive ping:', err)
+    }
+
     try {
       const { registerTelemetryJob, registerEmbeddingWorker, registerSweepJobs } = await import('./lib/queue')
       const { registerTriageWorker } = await import('./lib/triage-worker')
