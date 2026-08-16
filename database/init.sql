@@ -10914,7 +10914,28 @@ CREATE TABLE public.ticket_replies (
     updated_at timestamp with time zone DEFAULT now(),
     outbound_message_id text,
     inbound_message_id text,
-    source_mailbox_id uuid
+    source_mailbox_id uuid,
+    -- MSP write-back provenance (msp-mtp-inline-ticket-actions, 2026-08-16).
+    -- Set ONLY by /api/v1/mtp/tickets/{id}/comment; NULL for every reply
+    -- authored inside this install.
+    --
+    -- `via_pairing_key_id` is what the JIT detail endpoint has always
+    -- anticipated ("NULL for every row today — the write path will stamp it")
+    -- and is what makes two things real rather than aspirational: the `msp`
+    -- actor_type in the thread, and the D8 filter that hides one MSP's
+    -- internal notes from another MSP.
+    --
+    -- `msp_actor_email` is the asserted acting human from
+    -- X-Aegis-Acting-User-Email. Denormalised deliberately: the MSP's tech may
+    -- have no `users` row in this install, and authorship must survive both
+    -- that and the later revocation of the pairing key. An MSP reply that
+    -- renders as anonymous is worse than no write path at all.
+    -- FK added with the other constraints further down: this file is
+    -- pg_dump-shaped (every table first, every constraint after), so an inline
+    -- REFERENCES here is a forward reference to a primary key that does not
+    -- exist yet.
+    via_pairing_key_id uuid,
+    msp_actor_email character varying(320)
 );
 
 
@@ -23490,6 +23511,17 @@ ALTER TABLE ONLY public.ticket_replies
 
 ALTER TABLE ONLY public.ticket_replies
     ADD CONSTRAINT ticket_replies_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: ticket_replies ticket_replies_via_pairing_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- ON DELETE RESTRICT per the identity-reference rule: deleting the pairing key
+-- that authored a reply would orphan the provenance the D8 filter and the audit
+-- trail both depend on. Revocation marks a key revoked; it does not delete it.
+
+ALTER TABLE ONLY public.ticket_replies
+    ADD CONSTRAINT ticket_replies_via_pairing_key_id_fkey FOREIGN KEY (via_pairing_key_id) REFERENCES public.api_keys(id) ON DELETE RESTRICT;
 
 
 --
