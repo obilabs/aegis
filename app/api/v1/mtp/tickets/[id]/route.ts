@@ -195,16 +195,21 @@ export async function GET(
          SELECT
            tr.id::text AS id,
            (CASE WHEN tr.is_internal THEN 'internal_note' ELSE 'comment' END) AS kind,
-           'user'::text AS actor_type,
+           -- 'msp' once the write path stamps provenance. The ThreadRow type
+           -- has always allowed it; nothing could produce it until now.
+           (CASE WHEN tr.via_pairing_key_id IS NOT NULL THEN 'msp' ELSE 'user' END) AS actor_type,
            NULLIF(TRIM(COALESCE(
              u.first_name || ' ' || u.last_name,
              c.first_name || ' ' || c.last_name,
+             -- Falls back to the asserted MSP technician so an MSP reply is
+             -- never rendered anonymously when their tech has no local user row.
+             tr.msp_actor_email,
              ''
            )), '') AS actor_name,
            tr.content AS body,
            tr.is_internal AS is_internal_note,
            tr.created_at,
-           NULL::uuid AS via_pairing_key_id
+           tr.via_pairing_key_id
          FROM ticket_replies tr
          LEFT JOIN users u ON u.id = tr.user_id
          LEFT JOIN contacts c ON c.id = tr.contact_id
@@ -279,12 +284,25 @@ export async function GET(
       is_important: a.is_important,
     }))
 
-    // available_actions — computed server-side. Current-reality inputs make
-    // everything false (write opt-in / handoff queues / close grants all ship
-    // in Phase B/B'). The logic is future-ready; only the inputs change.
+    // available_actions — computed server-side.
+    //
+    // `writeOptInEnabled: true` since the minimal write path shipped
+    // (msp-mtp-inline-ticket-actions, 2026-08-16). It is NOT "always allow":
+    // `computeAvailableActions` ANDs this with `hasScope(scopes,
+    // 'tickets:write')`, and in the minimal path the SCOPE IS THE OPT-IN — the
+    // customer grants `tickets:write` per pairing key when they issue it, and
+    // can revoke just that scope without revoking the pairing. So a read-only
+    // pairing still computes every write action as false.
+    //
+    // When Phase B ships `write_scope_enabled_by_customer` (a toggle the
+    // customer can flip WITHOUT reissuing the key), replace this literal with
+    // that column — the two-gate design is better, it just does not exist yet
+    // and hardcoding `false` made the shipped write path invisible to the UI.
+    //
+    // `handoffQueueExists` stays false: escalation needs the queue model.
     const available_actions = computeAvailableActions({
       scopes: ctx.permissions,
-      writeOptInEnabled: false,
+      writeOptInEnabled: true,
       ticketBaseStatus: t.base_status ?? 'open',
       handoffQueueExists: false,
       closePermissionGranted: false,

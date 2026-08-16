@@ -7,6 +7,29 @@ dist/
 .turbo/
 data/
 
+# Secrets. This repo's .env holds DATABASE_URL, BETTER_AUTH_SECRET,
+# CREDENTIAL_ENCRYPTION_KEY and AEGIS_SECRETS_KEY — losing the last one makes
+# stored credentials permanently unreadable, and publishing it is worse.
+#
+# It was NOT ignored here until 2026-08-16: the entry was covered by the
+# monorepo root .gitignore and was missed when this repo was split out, so a
+# plain `git add -A` staged it. Committed example files are the negations below.
+.env
+.env.*
+!.env.example
+!env.example
+
+# Local, per-machine compose overrides. `docker-compose.yml` is deliberately
+# identical on prod and in the repo (see CLAUDE.md "one file, no drift"); the
+# override file is where a machine's local deviations live and must not be
+# shared.
+docker-compose.override.yml
+
+# Agent worktrees / local tool state. `.claude/worktrees/*` are nested git
+# repositories — staging them produces the "embedded git repository" warning
+# and commits a gitlink nobody can resolve.
+.claude/
+
 # R&D logs (grant docs — local only, per CLAUDE.md)
 .rd_log/
 
