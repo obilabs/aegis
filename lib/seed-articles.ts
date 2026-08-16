@@ -5,7 +5,9 @@ const CATEGORY_NAME = 'Aegis Admin Guide'
 // Bump when article content (not just the article set) changes. Rows
 // with an older content_version get updated on next seedSystemArticles
 // call. Rows with matching content_version are left alone.
-const CONTENT_VERSION = 9
+// Bumped to 10 (2026-08-16) for `msp-write-access-to-your-tickets`, added with
+// the MSP write path. Existing installs pick it up via POST /api/admin/kb/reseed.
+const CONTENT_VERSION = 10
 
 interface SystemArticle {
   slug: string
@@ -1450,6 +1452,60 @@ const SYSTEM_ARTICLES: SystemArticle[] = [
 <h3>Rotating a key</h3>
 <p>Set the corresponding environment variable to the new value (it overrides the file), or replace the file in <code>./data/secrets/</code>. Rotating <code>CREDENTIAL_ENCRYPTION_KEY</code> after credentials have been stored requires re-encrypting them &mdash; plan for it.</p>`,
     contentPlain: `Deploying Without Hand-Crafting Secrets. Aegis deploys with a minimal .env; you do not hand-craft crypto keys. On first boot any master key left out of the environment is generated as a strong random value, saved to a key file, and reused on every subsequent boot. What goes in .env: URLs (NEXT_PUBLIC_APP_URL, BETTER_AUTH_URL) you set. Master crypto keys (BETTER_AUTH_SECRET, CREDENTIAL_ENCRYPTION_KEY, AEGIS_SECRETS_KEY) leave blank to auto-generate; set only to pin/rotate/inject (explicit value always wins). Admin login is not in .env - create the first admin and password in the setup wizard. Integrations (SMTP, AI keys) are set in Settings, encrypted at rest. MUST back up: auto-generated keys live in ./data/secrets/ (AEGIS_SECRETS_DIR). Back this directory up with the rest of ./data. Losing CREDENTIAL_ENCRYPTION_KEY makes stored credentials permanently unreadable; losing BETTER_AUTH_SECRET logs everyone out. They are not in the database, so a DB backup alone does not capture them. Permissions: if startup warns the secrets dir is not writable, keys cannot persist and regenerate each restart; fix on the host with mkdir -p ./data/secrets && chown 1001:1001 ./data/secrets then restart. Rotating: set the env var to the new value or replace the file; rotating CREDENTIAL_ENCRYPTION_KEY after credentials exist requires re-encrypting them.`,
+  },
+  {
+    slug: 'msp-write-access-to-your-tickets',
+    title: 'Letting your MSP reply to tickets (and how to see what they did)',
+    // 'authenticated' rather than 'internal': this explains a change your own
+    // staff and end users will SEE in ticket threads — replies authored by
+    // someone who is not in your user list. An article that explains a
+    // surprise belongs where the surprised person can read it.
+    visibility: 'authenticated',
+    summary:
+      'How an external MSP gets permission to comment on and update your tickets, what they can and cannot do, and where every one of their actions is recorded.',
+    content: `<h2>Letting your MSP reply to tickets</h2>
+<p>If you have paired this installation with an external IT provider (an MSP), you can let their technicians work on your tickets directly &mdash; replying, changing status, and assigning &mdash; without giving anyone a shared login.</p>
+
+<h3>You grant it, and you can take it back</h3>
+<p>Write access is a <strong>scope on the pairing key</strong>, called <code>tickets:write</code>. When you issue a pairing key in <em>Settings &rarr; Integrations &rarr; MTP</em>, you choose whether to include it.</p>
+<ul>
+<li><strong>Without it</strong>, the MSP can read tickets and nothing else. Every write is refused by the server, not merely hidden in their interface.</li>
+<li><strong>With it</strong>, their technicians can comment, change status, and assign.</li>
+<li>You can remove just the write scope and leave the pairing in place &mdash; you do not have to disconnect the MSP to stop them writing.</li>
+</ul>
+
+<h3>Every action names a specific human</h3>
+<p>The pairing key identifies the <em>firm</em>. It is never enough on its own to write. Each individual write must also carry the email address of the specific technician performing it, which their portal supplies from that person's own signed-in session &mdash; it cannot be typed in or forged by hand. A write that arrives without it is rejected.</p>
+<p>This is why "the MSP updated your ticket" never appears in your history. You see which person did it.</p>
+
+<h3>Public replies vs internal notes</h3>
+<p>MSP technicians can write two different things, and the difference matters:</p>
+<ul>
+<li>A <strong>public reply</strong> is part of the conversation. The requester sees it.</li>
+<li>An <strong>internal note</strong> is staff-only working commentary. The requester never sees it.</li>
+</ul>
+<p>Which one it is must be stated explicitly on every write &mdash; there is no default. A note from one MSP is also hidden from any <em>other</em> MSP you have paired, unless you have deliberately opted them into sharing.</p>
+
+<h3>Where to look afterwards</h3>
+<p>Nothing an MSP does is invisible:</p>
+<ul>
+<li>Their replies appear in the ticket thread, attributed to the technician who wrote them.</li>
+<li>Status and assignment changes appear in the ticket's history with the acting technician recorded.</li>
+<li>Every write is recorded in the audit log, including the API call that carried it.</li>
+</ul>
+<p>All of this is written in the same database transaction as the change itself, so a change can never exist without its audit trail.</p>
+
+<h3>What an MSP still cannot do</h3>
+<ul>
+<li>Reassign a ticket to anyone outside your organization.</li>
+<li>Delete tickets or replies.</li>
+<li>Change ticket routing directly &mdash; that goes through an escalation request, not a field edit.</li>
+<li>Act at all after you revoke the pairing, which also disables the accounts they provisioned here.</li>
+</ul>
+
+<h3>Turning it off</h3>
+<p>Remove the <code>tickets:write</code> scope from the pairing key to stop writes while keeping reporting. Revoke the key entirely to end the relationship &mdash; that cascade also removes the credentials and accounts issued underneath it.</p>`,
+    contentPlain: `Letting your MSP reply to tickets. If you paired this installation with an external IT provider (MSP), you can let their technicians reply to, re-status, and assign your tickets without sharing a login. You grant it and can take it back: write access is a scope on the pairing key called tickets:write, chosen when you issue the key in Settings > Integrations > MTP. Without it the MSP can read only, and every write is refused server-side, not just hidden in their UI. With it they can comment, change status, and assign. You can remove just the write scope and leave the pairing in place. Every action names a specific human: the pairing key identifies the firm and is never sufficient alone; each write must carry the email of the specific technician, supplied by their portal from that person's signed-in session, so it cannot be typed or forged. Writes without it are rejected. Public replies vs internal notes: a public reply is part of the conversation and the requester sees it; an internal note is staff-only and the requester never sees it. Which one must be stated explicitly on every write - there is no default. One MSP's internal notes are hidden from any other paired MSP unless you opt them into sharing. Where to look afterwards: replies appear in the ticket thread attributed to the technician; status and assignment changes appear in ticket history with the acting technician; every write is recorded in the audit log. All written in the same transaction as the change, so a change cannot exist without its audit trail. What an MSP still cannot do: reassign outside your organization, delete tickets or replies, change routing directly (escalation only), or act at all after you revoke the pairing, which also disables accounts they provisioned. Turning it off: remove tickets:write to stop writes while keeping reporting; revoke the key to end the relationship, cascading to credentials and accounts issued underneath it.`,
   },
 ]
 
