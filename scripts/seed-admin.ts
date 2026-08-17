@@ -6,10 +6,10 @@
  * 
  * ENVIRONMENT VARIABLES (set in .env):
  *   ADMIN_EMAIL    - Admin email (default: admin@aegis.local)
- *   ADMIN_PASSWORD - Admin password (default: ChangeMe123!)
+ *   ADMIN_PASSWORD - REQUIRED to opt into seeding. There is NO default. If it
+ *                    is empty this script exits without seeding and the
+ *                    operator creates the first admin at /portal/setup.
  *   ADMIN_NAME     - Admin display name (default: Aegis Administrator)
- * 
- * ⚠️  IMPORTANT: Set these in .env BEFORE first launch in production!
  * 
  * Usage:
  *   npx tsx scripts/seed-admin.ts
@@ -51,17 +51,31 @@ function loadEnvFile() {
 
 loadEnvFile()
 
-// Read from environment variables with secure defaults
+// ADMIN_PASSWORD is the routing knob between the two deploy modes, and it has
+// NO DEFAULT. Empty means "I will create the first admin in the browser", not
+// "seed me an insecure default".
+//
+// This file previously fell back to a hard-coded `ChangeMe123!`. The fallback
+// was removed from `seed-admin.mjs` on 2026-06-14 as a security fix, and
+// CLAUDE.md has asserted since then that "there is no ChangeMe123! fallback" —
+// but the fix never reached THIS file, and `package.json` wires the documented
+// `npm run seed:admin` script here. So the documented command still created an
+// admin with a publicly known password while the docs promised it could not.
+// Found by the 2026-08-16 CLAUDE.md drift audit.
+//
+// Behaviour now matches seed-admin.mjs exactly. Do not reintroduce a default.
 const DEFAULT_EMAIL = process.env.ADMIN_EMAIL || 'admin@aegis.local'
-const DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMe123!'
+const DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD
 const DEFAULT_NAME = process.env.ADMIN_NAME || 'Aegis Administrator'
 
-// Warn if using default credentials
-if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
+if (!DEFAULT_PASSWORD) {
   console.log('')
-  console.log('⚠️  WARNING: Using default admin credentials!')
-  console.log('   Set ADMIN_EMAIL and ADMIN_PASSWORD in .env for production.')
+  console.log('ADMIN_PASSWORD is not set — skipping admin seeding.')
+  console.log('Create the first admin in the browser at /portal/setup.')
   console.log('')
+  console.log('To seed headlessly instead (CI/CD), set ADMIN_PASSWORD and re-run.')
+  console.log('')
+  process.exit(0)
 }
 
 /**
