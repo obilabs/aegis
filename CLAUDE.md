@@ -47,13 +47,23 @@ GitHub Actions.
 
 ## Database
 
-- **Fresh install:** `psql -f database/init.sql` (~274 tables) **THEN apply
-  `database/migrations/` in order.** init.sql is a pre-092 snapshot and is NOT
-  complete on its own: migrations 090 (`email_attempts`), 092 (MTP pairing moved
-  onto `api_keys`) and 093 (the entire cascade-revocation schema) are absent, and
-  init.sql still ships the `mtp_pairings` table that 092 drops. `docker-entrypoint.sh`
-  does both steps automatically, so containers are fine — hand-provisioned test
-  databases are the ones that break. Consolidating this is tracked debt.
+- **Fresh install:** `psql -f database/init.sql` — COMPLETE on its own
+  (~281 tables, all migrations 088-097 folded in, consolidated 2026-08-17). It
+  also pre-populates `schema_migrations`, so the entrypoint's migration loop
+  correctly skips everything on a fresh database.
+
+  Verified, not assumed: a database built from this file was diffed against one
+  built from the old init.sql + all 10 migrations. Identical inventories — 303
+  tables / 4342 columns / 1143 constraints / 937 indexes / 20 triggers — with
+  the only textual differences being Postgres re-normalising `CHECK ... ANY
+  (ARRAY[...])` (inline vs ALTER TABLE form; both enforce identically, tested)
+  and pg_dump's random restrict-nonce line.
+
+  **Regenerating it: always `--exclude-schema=pgboss`.** pg-boss creates its own
+  schema at runtime and baking it in caused the drift fixed in 376907d — a
+  naive `pg_dump` puts it straight back. Any DDL appended AFTER the dump must be
+  schema-qualified (`public.x`), because pg_dump ends by resetting search_path
+  to ''.
 - **Migrations:** `database/migrations/` (incremental SQL files, applied by docker-entrypoint.sh)
 - **Better Auth tables:** `npm run db:migrate` (auth tables only, via @better-auth/cli)
 
