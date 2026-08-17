@@ -1,6 +1,7 @@
 {
   "name": "@obilabs/aegis",
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "description": "Aegis Client - Self-hosted ITSM portal (Open Source)",
   "scripts": {
