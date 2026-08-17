@@ -18,6 +18,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+
+import { SERVER_CAPABILITIES } from '@/lib/mtp-capabilities'
 import { completeHandshake } from '@/lib/mtp-pairings'
 import { queryOne } from '@/lib/db'
 
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
     },
     server: {
       api_version: 'v1',
-      capabilities: ['tickets:read'],
+      capabilities: SERVER_CAPABILITIES,
       // Echo back the URL the MSP can use as the canonical poll endpoint.
       // MTP uses this rather than constructing it from the request URL,
       // which can be wrong when a proxy is in front (X-Forwarded-Host etc.).
