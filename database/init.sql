@@ -1,27 +1,49 @@
--- =============================================================================
--- Aegis ITSM Platform — Consolidated Database Schema
--- =============================================================================
 --
--- Single source of truth for the apps/aegis schema. Generated from a
--- schema-only pg_dump of the live database after migrations 001-082 + 087
--- were applied, then flattened on 2026-05-06.
+-- Aegis ITSM — consolidated fresh-install schema
 --
--- Pre-launch convention: incremental migrations are not preserved as files.
--- Any new schema change goes directly here AND into a numbered migration
--- under database/migrations/ (the entrypoint tracks applied versions in
--- schema_migrations so re-runs are safe).
+-- REGENERATED 2026-08-17 from a database built by the PREVIOUS init.sql plus
+-- every migration 088-097, then dumped schema-only. It is now COMPLETE on its
+-- own: `psql -f database/init.sql` produces the same schema the container boot
+-- produces, with no migration chain required.
 --
--- Usage: docker-entrypoint.sh runs this on first startup when no
--- `organizations` table exists. Subsequent startups skip init.sql and only
--- run unapplied migrations.
--- =============================================================================
+-- Why this was needed: the old init.sql was a PRE-092 SNAPSHOT. Everything in
+-- migrations 090 (email_attempts), 092 (MTP pairing moved onto api_keys) and
+-- 093 (the entire cascade-revocation schema) was absent, and it still shipped
+-- the `mtp_pairings` table that 092 DROPS. Containers were fine because the
+-- entrypoint applies migrations; anyone following the documented
+-- `psql -f init.sql` instruction got a database where MTP pairing and cascade
+-- revocation both broke at runtime — and, trusting "complete schema", would
+-- have debugged the code instead of the schema.
+--
+-- TWO THINGS THIS FILE DELIBERATELY DOES:
+--
+-- 1. It EXCLUDES the `pgboss` schema. pg-boss creates its own schema at
+--    runtime; baking it in caused the drift fixed in 376907d. A naive pg_dump
+--    re-introduces it — regenerate with `--exclude-schema=pgboss` or that bug
+--    comes straight back.
+--
+-- 2. It PRE-POPULATES `schema_migrations` with 088-097 at the end. The
+--    entrypoint runs init.sql and THEN the migration loop; without this the
+--    loop would re-apply ten migrations against a schema that already has
+--    everything. Marking them applied is what makes "fresh install = one flat
+--    schema, no migration chain" true rather than aspirational.
+--
+-- The migrations directory is RETAINED: it is the upgrade path for databases
+-- created before this consolidation. Do not delete it.
+--
+-- TO REGENERATE (after adding a migration):
+--   docker exec aegis-db pg_dump -U aegis -d aegis --schema-only \n--     --no-owner --no-privileges --exclude-schema=pgboss > init.sql
+--   then re-append the seed INSERTs and the schema_migrations block at the end.
+--
 
 --
+-- PostgreSQL database dump
 --
 
-\restrict 3pe9AQXZdTwqbTOyjw6Wxez7VgYRnjTkUaFtQaZIKpBdJyRZpw6npgkW8nO5O4l
+\restrict QH3wgHWHMd4LAj5VShf9Kvt3NkqEDbYYIhRBhBCiIMvtrAqtICsFTF0Lleq86eI
 
--- Dumped from database version 16.13 (Debian 16.13-1.pgdg12+1)
+-- Dumped from database version 16.15 (Debian 16.15-1.pgdg12+2)
+-- Dumped by pg_dump version 16.15 (Debian 16.15-1.pgdg12+2)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1546,6 +1568,30 @@ BEGIN
             ELSE 'Feature enabled'
         END
     );
+END;
+$$;
+
+
+--
+-- Name: enforce_flat_cascade(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.enforce_flat_cascade() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.parent_key_id IS NOT NULL THEN
+    PERFORM 1 FROM public.api_keys
+      WHERE id = NEW.parent_key_id
+        AND parent_key_id IS NOT NULL;
+    IF FOUND THEN
+      RAISE EXCEPTION
+        'api_keys: cascade depth cap (1); parent % already has a parent_key_id',
+        NEW.parent_key_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
 END;
 $$;
 
@@ -4883,29 +4929,6 @@ CREATE VIEW public.accessory_spending_analytics AS
 
 
 --
--- Name: password_setup_tokens; Type: TABLE; Schema: public; Owner: -
--- One-time, hashed, expiring set-password links (admin-password-onboarding).
---
-
-CREATE TABLE public.password_setup_tokens (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    organization_id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    token_hash text NOT NULL,
-    purpose character varying(16) NOT NULL,
-    expires_at timestamp with time zone NOT NULL,
-    used_at timestamp with time zone,
-    created_by uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT password_setup_tokens_pkey PRIMARY KEY (id),
-    CONSTRAINT password_setup_tokens_purpose_chk CHECK (((purpose)::text = ANY (ARRAY['invite'::text, 'reset'::text])))
-);
-
-CREATE INDEX password_setup_tokens_token_hash_idx ON public.password_setup_tokens USING btree (token_hash);
-CREATE INDEX password_setup_tokens_user_purpose_idx ON public.password_setup_tokens USING btree (user_id, purpose);
-
-
---
 -- Name: account; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -5403,7 +5426,9 @@ CREATE TABLE public.api_key_usage_logs (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 )
 PARTITION BY RANGE (created_at);
 
@@ -5425,7 +5450,9 @@ CREATE TABLE public.api_key_usage_logs_2026_03 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5446,7 +5473,9 @@ CREATE TABLE public.api_key_usage_logs_2026_04 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5467,7 +5496,9 @@ CREATE TABLE public.api_key_usage_logs_2026_05 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5488,7 +5519,9 @@ CREATE TABLE public.api_key_usage_logs_2026_06 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5509,7 +5542,9 @@ CREATE TABLE public.api_key_usage_logs_2026_07 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5530,7 +5565,9 @@ CREATE TABLE public.api_key_usage_logs_2026_08 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5551,7 +5588,9 @@ CREATE TABLE public.api_key_usage_logs_2026_09 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5572,7 +5611,9 @@ CREATE TABLE public.api_key_usage_logs_2026_10 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5593,7 +5634,9 @@ CREATE TABLE public.api_key_usage_logs_2026_11 (
     duration_ms integer,
     request_ip character varying(45),
     user_agent text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    acting_user_email character varying(320),
+    action_ticket_ref character varying(60)
 );
 
 
@@ -5635,7 +5678,29 @@ CREATE TABLE public.api_keys (
     revoked_by uuid,
     revoked_reason text,
     total_requests bigint DEFAULT 0 NOT NULL,
-    last_used_ip character varying(45)
+    last_used_ip character varying(45),
+    key_owner_user_id uuid,
+    migrated_at timestamp with time zone,
+    pairing_window_expires_at timestamp with time zone,
+    paired_at timestamp with time zone,
+    paired_from_ip text,
+    paired_user_agent text,
+    parent_key_id uuid,
+    CONSTRAINT api_keys_key_type_chk CHECK (((key_type)::text = ANY ((ARRAY['personal'::character varying, 'mtp-polling'::character varying, 'delegated-write'::character varying, 'standard'::character varying, 'aegis-mtp-pairing'::character varying])::text[])))
+);
+
+
+--
+-- Name: api_keys_legacy_permissions_backup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_keys_legacy_permissions_backup (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    api_key_id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    legacy_permissions jsonb NOT NULL,
+    legacy_scopes text[] NOT NULL,
+    backed_up_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -6228,7 +6293,8 @@ CREATE TABLE public.audit_log (
     changed_fields text[],
     success boolean DEFAULT true,
     error_message text,
-    created_at timestamp with time zone DEFAULT now()
+    created_at timestamp with time zone DEFAULT now(),
+    revoked_by_cascade_id uuid
 );
 
 
@@ -6312,6 +6378,27 @@ CREATE TABLE public.bulk_access_operations (
     created_by uuid,
     created_at timestamp with time zone DEFAULT now(),
     completed_at timestamp with time zone
+);
+
+
+--
+-- Name: cascade_revocation_queue; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cascade_revocation_queue (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    pairing_key_id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    actor_user_id uuid NOT NULL,
+    reason text NOT NULL,
+    state character varying(16) DEFAULT 'queued'::character varying NOT NULL,
+    queued_at timestamp with time zone DEFAULT now() NOT NULL,
+    commit_after timestamp with time zone DEFAULT (now() + '00:01:00'::interval) NOT NULL,
+    committed_at timestamp with time zone,
+    cancelled_at timestamp with time zone,
+    failure_reason text,
+    cascade_audit_id uuid,
+    CONSTRAINT cascade_revocation_queue_state_check CHECK (((state)::text = ANY ((ARRAY['queued'::character varying, 'cancelled'::character varying, 'committed'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -7685,6 +7772,26 @@ CREATE TABLE public.dynamic_groups (
 
 
 --
+-- Name: email_attempts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.email_attempts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    provider character varying(20) NOT NULL,
+    to_address character varying(320) NOT NULL,
+    subject text,
+    status character varying(20) NOT NULL,
+    error_code character varying(50),
+    error_message text,
+    provider_message_id text,
+    queue_job_id text,
+    attempted_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT email_attempts_status_chk CHECK (((status)::text = ANY ((ARRAY['success'::character varying, 'failed'::character varying])::text[])))
+);
+
+
+--
 -- Name: email_delivery_logs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -7776,18 +7883,23 @@ CREATE TABLE public.email_queue (
 --
 
 CREATE TABLE public.email_settings (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
     organization_id uuid NOT NULL,
-    smtp_host character varying(255),
-    smtp_port integer DEFAULT 587,
-    smtp_user character varying(255),
-    smtp_password_encrypted text,
-    smtp_from_email character varying(255),
-    smtp_from_name character varying(255),
-    smtp_secure boolean DEFAULT true,
-    is_enabled boolean DEFAULT false,
+    provider character varying(20) DEFAULT 'gmail-relay'::character varying NOT NULL,
+    config_envelope text,
+    from_address character varying(255) NOT NULL,
+    from_name character varying(255),
+    reply_to character varying(255),
+    last_test_at timestamp with time zone,
+    last_test_status character varying(20),
+    last_test_error_message text,
+    last_send_at timestamp with time zone,
+    last_send_status character varying(20),
+    last_send_error_message text,
     created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now()
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT email_settings_provider_chk CHECK (((provider)::text = ANY ((ARRAY['gmail-relay'::character varying, 'gmail-smtp'::character varying, 'resend'::character varying, 'ses'::character varying, 'sendgrid'::character varying, 'smtp'::character varying])::text[]))),
+    CONSTRAINT email_settings_send_status_chk CHECK (((last_send_status IS NULL) OR ((last_send_status)::text = ANY ((ARRAY['success'::character varying, 'failed'::character varying])::text[])))),
+    CONSTRAINT email_settings_test_status_chk CHECK (((last_test_status IS NULL) OR ((last_test_status)::text = ANY ((ARRAY['success'::character varying, 'failed'::character varying])::text[]))))
 );
 
 
@@ -7966,8 +8078,8 @@ CREATE TABLE public.inbound_email_log (
     parse_error text,
     received_at timestamp with time zone DEFAULT now() NOT NULL,
     processed_at timestamp with time zone,
-    CONSTRAINT inbound_email_log_match_path_check CHECK (((match_path)::text = ANY ((ARRAY['duplicate'::character varying, 'signed_valid'::character varying, 'signed_invalid_replay'::character varying, 'header_legacy'::character varying, 'subject_token'::character varying, 'foreign_instance'::character varying, 'new'::character varying])::text[]))),
-    CONSTRAINT inbound_email_log_status_check CHECK (((status)::text = ANY ((ARRAY['received'::character varying, 'parsed'::character varying, 'threaded_existing'::character varying, 'created_new'::character varying, 'created_new_auth_failed_signed'::character varying, 'created_new_auth_failed_header'::character varying, 'rejected_bounce'::character varying, 'rejected_autoresponder'::character varying, 'rejected_loop'::character varying, 'rejected_size'::character varying, 'rejected_foreign_instance'::character varying, 'failed_parse'::character varying, 'failed_create'::character varying])::text[])))
+    CONSTRAINT inbound_email_log_match_path_check CHECK (((match_path)::text = ANY (ARRAY[('duplicate'::character varying)::text, ('signed_valid'::character varying)::text, ('signed_invalid_replay'::character varying)::text, ('header_legacy'::character varying)::text, ('subject_token'::character varying)::text, ('foreign_instance'::character varying)::text, ('new'::character varying)::text]))),
+    CONSTRAINT inbound_email_log_status_check CHECK (((status)::text = ANY (ARRAY[('received'::character varying)::text, ('parsed'::character varying)::text, ('threaded_existing'::character varying)::text, ('created_new'::character varying)::text, ('created_new_auth_failed_signed'::character varying)::text, ('created_new_auth_failed_header'::character varying)::text, ('rejected_bounce'::character varying)::text, ('rejected_autoresponder'::character varying)::text, ('rejected_loop'::character varying)::text, ('rejected_size'::character varying)::text, ('rejected_foreign_instance'::character varying)::text, ('failed_parse'::character varying)::text, ('failed_create'::character varying)::text])))
 );
 
 
@@ -8023,10 +8135,10 @@ CREATE TABLE public.inbound_mailboxes (
     created_by uuid,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT inbound_mailboxes_backfill_days_on_activation_check CHECK (((backfill_days_on_activation >= 0) AND (backfill_days_on_activation <= 90))),
-    CONSTRAINT inbound_mailboxes_default_ticket_kind_check CHECK (((default_ticket_kind)::text = ANY ((ARRAY['incident'::character varying, 'request'::character varying, 'conversation'::character varying])::text[]))),
-    CONSTRAINT inbound_mailboxes_last_poll_status_check CHECK (((last_poll_status)::text = ANY ((ARRAY['ok'::character varying, 'auth_failed'::character varying, 'connect_failed'::character varying, 'parse_failed'::character varying, 'unknown_error'::character varying])::text[]))),
+    CONSTRAINT inbound_mailboxes_default_ticket_kind_check CHECK (((default_ticket_kind)::text = ANY (ARRAY[('incident'::character varying)::text, ('request'::character varying)::text, ('conversation'::character varying)::text]))),
+    CONSTRAINT inbound_mailboxes_last_poll_status_check CHECK (((last_poll_status)::text = ANY (ARRAY[('ok'::character varying)::text, ('auth_failed'::character varying)::text, ('connect_failed'::character varying)::text, ('parse_failed'::character varying)::text, ('unknown_error'::character varying)::text]))),
     CONSTRAINT inbound_mailboxes_poll_interval_seconds_check CHECK ((poll_interval_seconds >= 30)),
-    CONSTRAINT inbound_mailboxes_post_process_mode_check CHECK (((post_process_mode)::text = ANY ((ARRAY['passive'::character varying, 'mark_seen'::character varying, 'move_processed'::character varying, 'delete_processed'::character varying])::text[])))
+    CONSTRAINT inbound_mailboxes_post_process_mode_check CHECK (((post_process_mode)::text = ANY (ARRAY[('passive'::character varying)::text, ('mark_seen'::character varying)::text, ('move_processed'::character varying)::text, ('delete_processed'::character varying)::text])))
 );
 
 
@@ -8193,6 +8305,24 @@ CREATE TABLE public.kb_article_chunks (
 
 
 --
+-- Name: kb_article_sources; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.kb_article_sources (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    article_id uuid NOT NULL,
+    storage_key text NOT NULL,
+    original_filename character varying(255),
+    mime_type character varying(100),
+    byte_size bigint,
+    sha256 character(64),
+    extracted_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: kb_article_versions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -8279,8 +8409,10 @@ CREATE TABLE public.kb_articles (
     assessment_hash text,
     visible_to_departments uuid[] DEFAULT '{}'::uuid[],
     visible_to_job_titles uuid[] DEFAULT '{}'::uuid[],
-    CONSTRAINT kb_articles_article_type_chk CHECK (((article_type)::text = ANY ((ARRAY['standard'::character varying, 'policy'::character varying, 'procedure'::character varying, 'training'::character varying])::text[]))),
-    CONSTRAINT kb_articles_required_for_audience_kind_chk CHECK (((required_for_audience_kind)::text = ANY ((ARRAY['none'::character varying, 'internal'::character varying, 'targeted'::character varying])::text[])))
+    content_format character varying(20) DEFAULT 'html'::character varying NOT NULL,
+    CONSTRAINT kb_articles_article_type_chk CHECK (((article_type)::text = ANY (ARRAY[('standard'::character varying)::text, ('policy'::character varying)::text, ('procedure'::character varying)::text, ('training'::character varying)::text]))),
+    CONSTRAINT kb_articles_content_format_chk CHECK (((content_format)::text = ANY ((ARRAY['html'::character varying, 'markdown'::character varying])::text[]))),
+    CONSTRAINT kb_articles_required_for_audience_kind_chk CHECK (((required_for_audience_kind)::text = ANY (ARRAY[('none'::character varying)::text, ('internal'::character varying)::text, ('targeted'::character varying)::text])))
 );
 
 
@@ -8583,10 +8715,10 @@ CREATE TABLE public.mcp_tools (
 
 
 --
--- Name: mtp_pairings; Type: TABLE; Schema: public; Owner: -
+-- Name: mtp_pairings_legacy_backup; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.mtp_pairings (
+CREATE TABLE public.mtp_pairings_legacy_backup (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     organization_id uuid NOT NULL,
     display_name character varying(255) NOT NULL,
@@ -8599,22 +8731,11 @@ CREATE TABLE public.mtp_pairings (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     revoked_at timestamp with time zone,
     revocation_reason text,
-    -- Pairing-mode columns (defense in depth against leaked keys).
-    --
-    -- pairing_window_expires_at: deadline for the FIRST handshake. Default
-    --   15 min after issue. Customer can extend via the integrations UI.
-    -- paired_at: set atomically by the handshake route on first success.
-    --   Once non-null, subsequent handshakes are refused — single-use
-    --   binding. /api/v1/mtp/tickets does NOT gate on this; already-paired
-    --   keys keep polling until revoked.
-    -- paired_from_ip / paired_user_agent: audit trail surfaced in the
-    --   customer's pairings list so they can verify the pair completed
-    --   from a source they recognize.
-    pairing_window_expires_at timestamp with time zone DEFAULT (now() + interval '15 minutes') NOT NULL,
+    pairing_window_expires_at timestamp with time zone DEFAULT (now() + '00:15:00'::interval) NOT NULL,
     paired_at timestamp with time zone,
     paired_from_ip text,
     paired_user_agent text,
-    CONSTRAINT mtp_pairings_status_chk CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'revoked'::character varying])::text[])))
+    CONSTRAINT mtp_pairings_status_chk CHECK (((status)::text = ANY (ARRAY[('active'::character varying)::text, ('revoked'::character varying)::text])))
 );
 
 
@@ -9204,7 +9325,8 @@ CREATE TABLE public.organizations (
     instance_id character varying(50),
     license_key character varying(25),
     telemetry_tier integer DEFAULT 0,
-    portal_guidance_enabled boolean DEFAULT true
+    portal_guidance_enabled boolean DEFAULT true,
+    migration_banner_dismissed_at timestamp with time zone
 );
 
 
@@ -9246,6 +9368,24 @@ CREATE VIEW public.overdue_project_tasks AS
      JOIN public.projects p ON ((t.project_id = p.id)))
   WHERE (((t.status)::text <> ALL (ARRAY[('done'::character varying)::text, ('cancelled'::character varying)::text])) AND (t.due_date < CURRENT_DATE))
   ORDER BY t.due_date;
+
+
+--
+-- Name: password_setup_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.password_setup_tokens (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    purpose character varying(16) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT password_setup_tokens_purpose_chk CHECK (((purpose)::text = ANY (ARRAY['invite'::text, 'reset'::text])))
+);
 
 
 --
@@ -9300,7 +9440,13 @@ CREATE TABLE public.users (
     last_synced_at timestamp with time zone,
     contact_id uuid,
     dismissed_banners text[] DEFAULT '{}'::text[],
-    dashboard_view_preference character varying(20)
+    dashboard_view_preference character varying(20),
+    user_origin character varying(32) DEFAULT 'customer_native'::character varying NOT NULL,
+    msp_pairing_key_id uuid,
+    disabled_at timestamp with time zone,
+    disabled_reason text,
+    key_version bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT users_user_origin_chk CHECK (((user_origin)::text = ANY ((ARRAY['msp_provisioned'::character varying, 'customer_native'::character varying, 'customer_linked_to_msp'::character varying])::text[])))
 );
 
 
@@ -9464,7 +9610,7 @@ CREATE TABLE public.tickets (
     collaborators text[] DEFAULT '{}'::text[] NOT NULL,
     source_mailbox_id uuid,
     CONSTRAINT chk_lead_time_days CHECK (((lead_time_days >= 1) AND (lead_time_days <= 30))),
-    CONSTRAINT tickets_kind_check CHECK (((kind)::text = ANY ((ARRAY['incident'::character varying, 'request'::character varying, 'conversation'::character varying, 'task'::character varying])::text[]))),
+    CONSTRAINT tickets_kind_check CHECK (((kind)::text = ANY (ARRAY[('incident'::character varying)::text, ('request'::character varying)::text, ('conversation'::character varying)::text, ('task'::character varying)::text]))),
     CONSTRAINT tickets_satisfaction_rating_check CHECK (((satisfaction_rating >= 1) AND (satisfaction_rating <= 5)))
 );
 
@@ -10178,6 +10324,16 @@ CREATE TABLE public.saas_services (
 
 
 --
+-- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_migrations (
+    version text NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: service_assets; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -10499,8 +10655,8 @@ CREATE TABLE public.support_messages (
     sender_type character varying(20) NOT NULL,
     content text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT support_messages_role_check CHECK (((role)::text = ANY ((ARRAY['user'::character varying, 'model'::character varying])::text[]))),
-    CONSTRAINT support_messages_sender_type_check CHECK (((sender_type)::text = ANY ((ARRAY['user'::character varying, 'bot'::character varying])::text[])))
+    CONSTRAINT support_messages_role_check CHECK (((role)::text = ANY (ARRAY[('user'::character varying)::text, ('model'::character varying)::text]))),
+    CONSTRAINT support_messages_sender_type_check CHECK (((sender_type)::text = ANY (ARRAY[('user'::character varying)::text, ('bot'::character varying)::text])))
 );
 
 
@@ -10687,6 +10843,27 @@ CREATE TABLE public.teams (
 
 
 --
+-- Name: telemetry_consent_log; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_consent_log (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    user_id uuid,
+    action character varying(20) NOT NULL,
+    source character varying(40) NOT NULL,
+    prev_state character varying(20) NOT NULL,
+    new_state character varying(20) NOT NULL,
+    reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT telemetry_consent_log_action_chk CHECK (((action)::text = ANY ((ARRAY['acknowledged'::character varying, 'enabled'::character varying, 'disabled'::character varying])::text[]))),
+    CONSTRAINT telemetry_consent_log_new_state_chk CHECK (((new_state)::text = ANY ((ARRAY['on'::character varying, 'off'::character varying])::text[]))),
+    CONSTRAINT telemetry_consent_log_prev_state_chk CHECK (((prev_state)::text = ANY ((ARRAY['on'::character varying, 'off'::character varying, 'default-on'::character varying])::text[]))),
+    CONSTRAINT telemetry_consent_log_source_chk CHECK (((source)::text = ANY ((ARRAY['setup_wizard'::character varying, 'settings_ui'::character varying, 'env_var'::character varying, 'retroactive_pre_consent_release'::character varying])::text[])))
+);
+
+
+--
 -- Name: telemetry_log; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -10701,6 +10878,19 @@ CREATE TABLE public.telemetry_log (
     error_message text,
     sent_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: telemetry_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_settings (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by_user_id uuid
 );
 
 
@@ -10915,28 +11105,23 @@ CREATE TABLE public.ticket_replies (
     outbound_message_id text,
     inbound_message_id text,
     source_mailbox_id uuid,
-    -- MSP write-back provenance (msp-mtp-inline-ticket-actions, 2026-08-16).
-    -- Set ONLY by /api/v1/mtp/tickets/{id}/comment; NULL for every reply
-    -- authored inside this install.
-    --
-    -- `via_pairing_key_id` is what the JIT detail endpoint has always
-    -- anticipated ("NULL for every row today — the write path will stamp it")
-    -- and is what makes two things real rather than aspirational: the `msp`
-    -- actor_type in the thread, and the D8 filter that hides one MSP's
-    -- internal notes from another MSP.
-    --
-    -- `msp_actor_email` is the asserted acting human from
-    -- X-Aegis-Acting-User-Email. Denormalised deliberately: the MSP's tech may
-    -- have no `users` row in this install, and authorship must survive both
-    -- that and the later revocation of the pairing key. An MSP reply that
-    -- renders as anonymous is worse than no write path at all.
-    -- FK added with the other constraints further down: this file is
-    -- pg_dump-shaped (every table first, every constraint after), so an inline
-    -- REFERENCES here is a forward reference to a primary key that does not
-    -- exist yet.
     via_pairing_key_id uuid,
     msp_actor_email character varying(320)
 );
+
+
+--
+-- Name: COLUMN ticket_replies.via_pairing_key_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.ticket_replies.via_pairing_key_id IS 'MSP pairing key that authored this reply via /api/v1/mtp/tickets/{id}/comment. NULL for replies authored inside this install. Drives the msp actor_type and the D8 cross-MSP internal-note filter.';
+
+
+--
+-- Name: COLUMN ticket_replies.msp_actor_email; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.ticket_replies.msp_actor_email IS 'Asserted acting MSP technician (X-Aegis-Acting-User-Email). Denormalised so authorship survives the tech having no local user row and the pairing key later being revoked.';
 
 
 --
@@ -11986,6 +12171,14 @@ ALTER TABLE ONLY public.api_key_usage_logs_2026_11
 
 
 --
+-- Name: api_keys_legacy_permissions_backup api_keys_legacy_permissions_backup_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_legacy_permissions_backup
+    ADD CONSTRAINT api_keys_legacy_permissions_backup_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: api_keys api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -12351,6 +12544,14 @@ ALTER TABLE ONLY public.break_glass_incidents
 
 ALTER TABLE ONLY public.bulk_access_operations
     ADD CONSTRAINT bulk_access_operations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cascade_revocation_queue cascade_revocation_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cascade_revocation_queue
+    ADD CONSTRAINT cascade_revocation_queue_pkey PRIMARY KEY (id);
 
 
 --
@@ -12962,6 +13163,14 @@ ALTER TABLE ONLY public.dynamic_groups
 
 
 --
+-- Name: email_attempts email_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_attempts
+    ADD CONSTRAINT email_attempts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: email_delivery_logs email_delivery_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -12998,7 +13207,7 @@ ALTER TABLE ONLY public.email_queue
 --
 
 ALTER TABLE ONLY public.email_settings
-    ADD CONSTRAINT email_settings_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT email_settings_pkey PRIMARY KEY (organization_id);
 
 
 --
@@ -13202,6 +13411,14 @@ ALTER TABLE ONLY public.kb_article_chunks
 
 
 --
+-- Name: kb_article_sources kb_article_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.kb_article_sources
+    ADD CONSTRAINT kb_article_sources_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: kb_article_versions kb_article_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -13346,11 +13563,11 @@ ALTER TABLE ONLY public.mcp_tools
 
 
 --
--- Name: mtp_pairings mtp_pairings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: mtp_pairings_legacy_backup mtp_pairings_legacy_backup_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.mtp_pairings
-    ADD CONSTRAINT mtp_pairings_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.mtp_pairings_legacy_backup
+    ADD CONSTRAINT mtp_pairings_legacy_backup_pkey PRIMARY KEY (id);
 
 
 --
@@ -13543,6 +13760,14 @@ ALTER TABLE ONLY public.organization_features
 
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: password_setup_tokens password_setup_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.password_setup_tokens
+    ADD CONSTRAINT password_setup_tokens_pkey PRIMARY KEY (id);
 
 
 --
@@ -13882,6 +14107,14 @@ ALTER TABLE ONLY public.saas_services
 
 
 --
+-- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
 -- Name: service_assets service_assets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -14178,11 +14411,35 @@ ALTER TABLE ONLY public.teams
 
 
 --
+-- Name: telemetry_consent_log telemetry_consent_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_consent_log
+    ADD CONSTRAINT telemetry_consent_log_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: telemetry_log telemetry_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.telemetry_log
     ADD CONSTRAINT telemetry_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: telemetry_settings telemetry_settings_organization_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_settings
+    ADD CONSTRAINT telemetry_settings_organization_id_key UNIQUE (organization_id);
+
+
+--
+-- Name: telemetry_settings telemetry_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_settings
+    ADD CONSTRAINT telemetry_settings_pkey PRIMARY KEY (id);
 
 
 --
@@ -15201,10 +15458,45 @@ CREATE INDEX idx_api_keys_key_type ON public.api_keys USING btree (key_type);
 
 
 --
+-- Name: idx_api_keys_legacy_backup_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_keys_legacy_backup_key ON public.api_keys_legacy_permissions_backup USING btree (api_key_id);
+
+
+--
 -- Name: idx_api_keys_org_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_api_keys_org_active ON public.api_keys USING btree (organization_id, is_active);
+
+
+--
+-- Name: idx_api_keys_org_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_keys_org_type ON public.api_keys USING btree (organization_id, key_type);
+
+
+--
+-- Name: idx_api_keys_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_keys_owner ON public.api_keys USING btree (key_owner_user_id) WHERE (key_owner_user_id IS NOT NULL);
+
+
+--
+-- Name: idx_api_keys_pairing_lookup; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_keys_pairing_lookup ON public.api_keys USING btree (key_prefix) WHERE (((key_type)::text = 'aegis-mtp-pairing'::text) AND (paired_at IS NULL));
+
+
+--
+-- Name: idx_api_keys_parent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_keys_parent ON public.api_keys USING btree (parent_key_id) WHERE (parent_key_id IS NOT NULL);
 
 
 --
@@ -15544,10 +15836,24 @@ CREATE INDEX idx_audit_log_actor_type ON public.audit_log USING btree (actor_typ
 
 
 --
+-- Name: idx_audit_log_cascade; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_audit_log_cascade ON public.audit_log USING btree (revoked_by_cascade_id) WHERE (revoked_by_cascade_id IS NOT NULL);
+
+
+--
 -- Name: idx_audit_log_created; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_audit_log_created ON public.audit_log USING btree (created_at);
+
+
+--
+-- Name: idx_audit_log_entity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_audit_log_entity ON public.audit_log USING btree (entity_type, entity_id);
 
 
 --
@@ -15611,6 +15917,20 @@ CREATE INDEX idx_break_glass_incidents_org ON public.break_glass_incidents USING
 --
 
 CREATE INDEX idx_break_glass_incidents_status ON public.break_glass_incidents USING btree (status);
+
+
+--
+-- Name: idx_cascade_queue_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cascade_queue_org ON public.cascade_revocation_queue USING btree (organization_id, state);
+
+
+--
+-- Name: idx_cascade_queue_pending; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cascade_queue_pending ON public.cascade_revocation_queue USING btree (commit_after) WHERE ((state)::text = 'queued'::text);
 
 
 --
@@ -16391,6 +16711,20 @@ CREATE INDEX idx_dynamic_groups_type ON public.dynamic_groups USING btree (group
 
 
 --
+-- Name: idx_email_attempts_attempted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_email_attempts_attempted_at ON public.email_attempts USING btree (attempted_at);
+
+
+--
+-- Name: idx_email_attempts_org_attempted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_email_attempts_org_attempted_at ON public.email_attempts USING btree (organization_id, attempted_at DESC);
+
+
+--
 -- Name: idx_email_delivery_logs_queue; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -16555,7 +16889,7 @@ CREATE INDEX idx_inbound_email_log_message_id ON public.inbound_email_log USING 
 -- Name: idx_inbound_email_log_security_events; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_inbound_email_log_security_events ON public.inbound_email_log USING btree (received_at DESC) WHERE ((status)::text = ANY ((ARRAY['created_new_auth_failed_signed'::character varying, 'created_new_auth_failed_header'::character varying, 'rejected_foreign_instance'::character varying])::text[]));
+CREATE INDEX idx_inbound_email_log_security_events ON public.inbound_email_log USING btree (received_at DESC) WHERE ((status)::text = ANY (ARRAY[('created_new_auth_failed_signed'::character varying)::text, ('created_new_auth_failed_header'::character varying)::text, ('rejected_foreign_instance'::character varying)::text]));
 
 
 --
@@ -16682,6 +17016,20 @@ CREATE INDEX idx_kb_article_chunks_embedding_status ON public.kb_article_chunks 
 --
 
 CREATE INDEX idx_kb_article_chunks_org ON public.kb_article_chunks USING btree (organization_id);
+
+
+--
+-- Name: idx_kb_article_sources_article; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_kb_article_sources_article ON public.kb_article_sources USING btree (article_id);
+
+
+--
+-- Name: idx_kb_article_sources_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_kb_article_sources_org ON public.kb_article_sources USING btree (organization_id);
 
 
 --
@@ -16927,27 +17275,6 @@ CREATE INDEX idx_master_data_requests_org ON public.master_data_requests USING b
 --
 
 CREATE INDEX idx_master_data_requests_status ON public.master_data_requests USING btree (status);
-
-
---
--- Name: idx_mtp_pairings_hash; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_mtp_pairings_hash ON public.mtp_pairings USING btree (api_key_hash) WHERE ((status)::text = 'active'::text);
-
-
---
--- Name: idx_mtp_pairings_lookup; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_mtp_pairings_lookup ON public.mtp_pairings USING btree (api_key_prefix) WHERE ((status)::text = 'active'::text);
-
-
---
--- Name: idx_mtp_pairings_org; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_mtp_pairings_org ON public.mtp_pairings USING btree (organization_id);
 
 
 --
@@ -17756,6 +18083,13 @@ CREATE INDEX idx_teams_workspace ON public.teams USING btree (workspace_id);
 
 
 --
+-- Name: idx_telemetry_consent_log_org_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_telemetry_consent_log_org_created ON public.telemetry_consent_log USING btree (organization_id, created_at DESC);
+
+
+--
 -- Name: idx_telemetry_log_org; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -17767,6 +18101,13 @@ CREATE INDEX idx_telemetry_log_org ON public.telemetry_log USING btree (organiza
 --
 
 CREATE INDEX idx_telemetry_log_status ON public.telemetry_log USING btree (status) WHERE ((status)::text = ('pending'::character varying)::text);
+
+
+--
+-- Name: idx_telemetry_settings_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_telemetry_settings_org ON public.telemetry_settings USING btree (organization_id);
 
 
 --
@@ -17907,6 +18248,13 @@ CREATE INDEX idx_ticket_replies_outbound_msgid ON public.ticket_replies USING bt
 --
 
 CREATE INDEX idx_ticket_replies_ticket ON public.ticket_replies USING btree (ticket_id);
+
+
+--
+-- Name: idx_ticket_replies_via_pairing_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_ticket_replies_via_pairing_key ON public.ticket_replies USING btree (via_pairing_key_id) WHERE (via_pairing_key_id IS NOT NULL);
 
 
 --
@@ -18337,6 +18685,13 @@ CREATE INDEX idx_users_external ON public.users USING btree (external_source, ex
 
 
 --
+-- Name: idx_users_msp_pairing; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_users_msp_pairing ON public.users USING btree (msp_pairing_key_id) WHERE (msp_pairing_key_id IS NOT NULL);
+
+
+--
 -- Name: idx_users_organization; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -18369,6 +18724,41 @@ CREATE INDEX idx_workspaces_active ON public.workspaces USING btree (is_active) 
 --
 
 CREATE INDEX idx_workspaces_org ON public.workspaces USING btree (organization_id);
+
+
+--
+-- Name: mtp_pairings_legacy_backup_api_key_hash_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX mtp_pairings_legacy_backup_api_key_hash_idx ON public.mtp_pairings_legacy_backup USING btree (api_key_hash) WHERE ((status)::text = 'active'::text);
+
+
+--
+-- Name: mtp_pairings_legacy_backup_api_key_prefix_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX mtp_pairings_legacy_backup_api_key_prefix_idx ON public.mtp_pairings_legacy_backup USING btree (api_key_prefix) WHERE ((status)::text = 'active'::text);
+
+
+--
+-- Name: mtp_pairings_legacy_backup_organization_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX mtp_pairings_legacy_backup_organization_id_idx ON public.mtp_pairings_legacy_backup USING btree (organization_id);
+
+
+--
+-- Name: password_setup_tokens_token_hash_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX password_setup_tokens_token_hash_idx ON public.password_setup_tokens USING btree (token_hash);
+
+
+--
+-- Name: password_setup_tokens_user_purpose_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX password_setup_tokens_user_purpose_idx ON public.password_setup_tokens USING btree (user_id, purpose);
 
 
 --
@@ -18606,6 +18996,13 @@ CREATE TRIGGER location_path_trigger BEFORE INSERT OR UPDATE OF parent_id, name 
 --
 
 CREATE TRIGGER ticket_status_change_trigger BEFORE UPDATE OF status_id ON public.tickets FOR EACH ROW WHEN ((old.status_id IS DISTINCT FROM new.status_id)) EXECUTE FUNCTION public.handle_ticket_status_change();
+
+
+--
+-- Name: api_keys trg_api_keys_flat_cascade; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_api_keys_flat_cascade BEFORE INSERT OR UPDATE OF parent_key_id ON public.api_keys FOR EACH ROW EXECUTE FUNCTION public.enforce_flat_cascade();
 
 
 --
@@ -19298,11 +19695,27 @@ ALTER TABLE ONLY public.api_keys
 
 
 --
+-- Name: api_keys api_keys_key_owner_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_key_owner_user_id_fkey FOREIGN KEY (key_owner_user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: api_keys api_keys_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.api_keys
     ADD CONSTRAINT api_keys_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: api_keys api_keys_parent_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_parent_key_id_fkey FOREIGN KEY (parent_key_id) REFERENCES public.api_keys(id) ON DELETE SET NULL;
 
 
 --
@@ -19842,6 +20255,14 @@ ALTER TABLE ONLY public.assets
 
 
 --
+-- Name: audit_log audit_log_revoked_by_cascade_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log
+    ADD CONSTRAINT audit_log_revoked_by_cascade_id_fkey FOREIGN KEY (revoked_by_cascade_id) REFERENCES public.audit_log(id);
+
+
+--
 -- Name: backlog_comments backlog_comments_backlog_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -19951,6 +20372,38 @@ ALTER TABLE ONLY public.bulk_access_operations
 
 ALTER TABLE ONLY public.bulk_access_operations
     ADD CONSTRAINT bulk_access_operations_target_service_id_fkey FOREIGN KEY (target_service_id) REFERENCES public.services(id) ON DELETE CASCADE;
+
+
+--
+-- Name: cascade_revocation_queue cascade_revocation_queue_actor_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cascade_revocation_queue
+    ADD CONSTRAINT cascade_revocation_queue_actor_user_id_fkey FOREIGN KEY (actor_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cascade_revocation_queue cascade_revocation_queue_cascade_audit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cascade_revocation_queue
+    ADD CONSTRAINT cascade_revocation_queue_cascade_audit_id_fkey FOREIGN KEY (cascade_audit_id) REFERENCES public.audit_log(id);
+
+
+--
+-- Name: cascade_revocation_queue cascade_revocation_queue_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cascade_revocation_queue
+    ADD CONSTRAINT cascade_revocation_queue_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: cascade_revocation_queue cascade_revocation_queue_pairing_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cascade_revocation_queue
+    ADD CONSTRAINT cascade_revocation_queue_pairing_key_id_fkey FOREIGN KEY (pairing_key_id) REFERENCES public.api_keys(id);
 
 
 --
@@ -21258,6 +21711,14 @@ ALTER TABLE ONLY public.dynamic_groups
 
 
 --
+-- Name: email_attempts email_attempts_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_attempts
+    ADD CONSTRAINT email_attempts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
 -- Name: email_delivery_logs email_delivery_logs_email_queue_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -21674,6 +22135,22 @@ ALTER TABLE ONLY public.kb_article_chunks
 
 
 --
+-- Name: kb_article_sources kb_article_sources_article_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.kb_article_sources
+    ADD CONSTRAINT kb_article_sources_article_id_fkey FOREIGN KEY (article_id) REFERENCES public.kb_articles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: kb_article_sources kb_article_sources_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.kb_article_sources
+    ADD CONSTRAINT kb_article_sources_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
 -- Name: kb_categories kb_categories_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -21935,22 +22412,6 @@ ALTER TABLE ONLY public.master_data_settings
 
 ALTER TABLE ONLY public.mcp_tools
     ADD CONSTRAINT mcp_tools_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
-
-
---
--- Name: mtp_pairings mtp_pairings_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.mtp_pairings
-    ADD CONSTRAINT mtp_pairings_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
-
-
---
--- Name: mtp_pairings mtp_pairings_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.mtp_pairings
-    ADD CONSTRAINT mtp_pairings_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
 
 
 --
@@ -23242,11 +23703,43 @@ ALTER TABLE ONLY public.teams
 
 
 --
+-- Name: telemetry_consent_log telemetry_consent_log_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_consent_log
+    ADD CONSTRAINT telemetry_consent_log_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: telemetry_consent_log telemetry_consent_log_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_consent_log
+    ADD CONSTRAINT telemetry_consent_log_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: telemetry_log telemetry_log_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.telemetry_log
     ADD CONSTRAINT telemetry_log_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: telemetry_settings telemetry_settings_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_settings
+    ADD CONSTRAINT telemetry_settings_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: telemetry_settings telemetry_settings_updated_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_settings
+    ADD CONSTRAINT telemetry_settings_updated_by_user_id_fkey FOREIGN KEY (updated_by_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -23516,9 +24009,6 @@ ALTER TABLE ONLY public.ticket_replies
 --
 -- Name: ticket_replies ticket_replies_via_pairing_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
--- ON DELETE RESTRICT per the identity-reference rule: deleting the pairing key
--- that authored a reply would orphan the provenance the D8 filter and the audit
--- trail both depend on. Revocation marks a key revoked; it does not delete it.
 
 ALTER TABLE ONLY public.ticket_replies
     ADD CONSTRAINT ticket_replies_via_pairing_key_id_fkey FOREIGN KEY (via_pairing_key_id) REFERENCES public.api_keys(id) ON DELETE RESTRICT;
@@ -24109,6 +24599,14 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: users users_msp_pairing_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_msp_pairing_key_id_fkey FOREIGN KEY (msp_pairing_key_id) REFERENCES public.api_keys(id) ON DELETE SET NULL;
+
+
+--
 -- Name: users users_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -24157,18 +24655,16 @@ ALTER TABLE ONLY public.workspaces
 
 
 --
+-- PostgreSQL database dump complete
 --
 
-\unrestrict 3pe9AQXZdTwqbTOyjw6Wxez7VgYRnjTkUaFtQaZIKpBdJyRZpw6npgkW8nO5O4l
+\unrestrict QH3wgHWHMd4LAj5VShf9Kvt3NkqEDbYYIhRBhBCiIMvtrAqtICsFTF0Lleq86eI
 
+--
+-- Seed data: ticket status templates (carried over from the previous
+-- init.sql; a schema-only dump does not include them).
+--
 
--- =============================================================================
--- Seed Data (system-wide; org-scoped seeds happen in /api/setup/complete)
--- =============================================================================
-
--- Ticket status templates: 15 system templates copied per-org by
--- initialize_ticket_statuses() during the setup wizard. Fixed UUIDs
--- so upgrades don't duplicate.
 INSERT INTO public.ticket_status_templates (id, name, color, icon, description, base_status, sla_paused, is_default, is_system, sort_order) VALUES ('43051d9c-b691-4845-9dcb-9288e23f892f', 'New', '#3b82f6', 'inbox', 'Newly created ticket, not yet triaged', 'open', false, true, true, 10) ON CONFLICT (name) DO NOTHING;
 INSERT INTO public.ticket_status_templates (id, name, color, icon, description, base_status, sla_paused, is_default, is_system, sort_order) VALUES ('06d79835-3f91-4df8-8ead-86b8eb98dbcc', 'Open', '#8b5cf6', 'folder-open', 'Ticket triaged and ready for work', 'open', false, false, true, 15) ON CONFLICT (name) DO NOTHING;
 INSERT INTO public.ticket_status_templates (id, name, color, icon, description, base_status, sla_paused, is_default, is_system, sort_order) VALUES ('6bffe3c0-a724-4822-aa1a-99d1db74c379', 'In Progress', '#eab308', 'play', 'Actively being worked on', 'open', false, false, true, 20) ON CONFLICT (name) DO NOTHING;
@@ -24185,43 +24681,29 @@ INSERT INTO public.ticket_status_templates (id, name, color, icon, description, 
 INSERT INTO public.ticket_status_templates (id, name, color, icon, description, base_status, sla_paused, is_default, is_system, sort_order) VALUES ('de52cd7e-371d-4434-84a6-d485c5812e44', 'Closed', '#64748b', 'check', 'Ticket complete', 'closed', false, false, true, 80) ON CONFLICT (name) DO NOTHING;
 INSERT INTO public.ticket_status_templates (id, name, color, icon, description, base_status, sla_paused, is_default, is_system, sort_order) VALUES ('1e774140-6f45-462b-bdb4-e0ea84b23715', 'Cancelled', '#374151', 'x-circle', 'Ticket cancelled or aborted', 'closed', false, false, false, 90) ON CONFLICT (name) DO NOTHING;
 
--- =============================================================================
--- Telemetry consent (added via migration 094, mirrored here for fresh installs)
--- See apps/aegis/database/migrations/094_telemetry_consent.sql for the canonical
--- declaration. PRINCIPLES.md #2 (consent-first telemetry), #6 (append-only audit).
--- =============================================================================
 
-CREATE TABLE IF NOT EXISTS public.telemetry_settings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id uuid NOT NULL UNIQUE REFERENCES public.organizations(id) ON DELETE CASCADE,
-  enabled boolean NOT NULL DEFAULT true,
-  updated_at timestamp with time zone NOT NULL DEFAULT NOW(),
-  updated_by_user_id uuid REFERENCES public.users(id) ON DELETE SET NULL
+--
+-- Migration ledger: mark every migration folded into this file as applied so
+-- the entrypoint's loop skips them. NOTE the explicit `public.` qualification:
+-- pg_dump ends by resetting search_path to '', so unqualified DDL appended
+-- after the dump fails with "no schema has been selected to create in".
+-- the entrypoint's loop skips them on a fresh install (see header note 2).
+--
+
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+    version text PRIMARY KEY,
+    applied_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_telemetry_settings_org
-  ON public.telemetry_settings(organization_id);
-
-CREATE TABLE IF NOT EXISTS public.telemetry_consent_log (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-  user_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
-  action character varying(20) NOT NULL,
-  source character varying(40) NOT NULL,
-  prev_state character varying(20) NOT NULL,
-  new_state character varying(20) NOT NULL,
-  reason text,
-  created_at timestamp with time zone NOT NULL DEFAULT NOW(),
-  CONSTRAINT telemetry_consent_log_action_chk
-    CHECK (action IN ('acknowledged', 'enabled', 'disabled')),
-  CONSTRAINT telemetry_consent_log_source_chk
-    CHECK (source IN ('setup_wizard', 'settings_ui', 'env_var',
-                       'retroactive_pre_consent_release')),
-  CONSTRAINT telemetry_consent_log_prev_state_chk
-    CHECK (prev_state IN ('on', 'off', 'default-on')),
-  CONSTRAINT telemetry_consent_log_new_state_chk
-    CHECK (new_state IN ('on', 'off'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_telemetry_consent_log_org_created
-  ON public.telemetry_consent_log(organization_id, created_at DESC);
+INSERT INTO public.schema_migrations (version) VALUES
+    ('088_mtp_pairing_mode'),
+    ('089_role_capability_canonical_names'),
+    ('090_email_settings'),
+    ('091_api_keys_typed_scoped'),
+    ('092_api_keys_mtp_unification'),
+    ('093_cascade_revocation'),
+    ('094_telemetry_consent'),
+    ('095_kb_render_and_sources'),
+    ('096_kb_categories_sort_order'),
+    ('097_mtp_write_provenance')
+ON CONFLICT (version) DO NOTHING;
