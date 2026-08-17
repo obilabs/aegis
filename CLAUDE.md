@@ -1,6 +1,13 @@
 # Aegis Client - AI Agent Instructions
 
-**Single-tenant ITSM platform.** One organization per installation. See root `CLAUDE.md` for universal security rules and terminology.
+**Single-tenant ITSM platform.** One organization per installation.
+
+> **This repo was split out of the monorepo in 2026-08.** There is no parent
+> `CLAUDE.md` above it. The universal security rules, terminology table and
+> `PRINCIPLES.md` live in the **obilabs-platform** repo
+> (`D:/personal-projects/obilabs/obilabs-platform`), as do
+> `docs/compliance/legal-review-todo.md` and the openspec archive. Every "see
+> root CLAUDE.md" pointer below means that repo.
 
 ## What Client IS
 
@@ -32,11 +39,21 @@ docker compose pull && docker compose up -d
 # Watch logs: docker compose logs -f web
 ```
 
-Set `AEGIS_VERSION` in `.env` (defaults to `0.1.0`). Images built by GitHub Actions.
+Set `AEGIS_VERSION` in `.env`. It defaults to `0.1.0`, which is a tag this
+workflow currently REPUBLISHES on every merge to main — so it is not a version,
+it is a moving pointer. Use `latest` to test current main until the immutable-tag
+policy (already applied in obilabs-platform) is ported here. Images built by
+GitHub Actions.
 
 ## Database
 
-- **Fresh install:** `psql -f database/init.sql` (145 tables, complete schema)
+- **Fresh install:** `psql -f database/init.sql` (~274 tables) **THEN apply
+  `database/migrations/` in order.** init.sql is a pre-092 snapshot and is NOT
+  complete on its own: migrations 090 (`email_attempts`), 092 (MTP pairing moved
+  onto `api_keys`) and 093 (the entire cascade-revocation schema) are absent, and
+  init.sql still ships the `mtp_pairings` table that 092 drops. `docker-entrypoint.sh`
+  does both steps automatically, so containers are fine — hand-provisioned test
+  databases are the ones that break. Consolidating this is tracked debt.
 - **Migrations:** `database/migrations/` (incremental SQL files, applied by docker-entrypoint.sh)
 - **Better Auth tables:** `npm run db:migrate` (auth tables only, via @better-auth/cli)
 
@@ -59,7 +76,8 @@ Internal routes serve the Next.js frontend. External routes serve third-party in
 
 System in `lib/features.ts`. Categories: core, standard, advanced, enterprise, experimental. Statuses: stable, beta, alpha, coming_soon, deprecated.
 
-- DB tables: `feature_flags` + `feature_flag_overrides`
+- DB tables: `feature_flags` + `organization_feature_flags` (per-org enable/disable
+  state — there is no `feature_flag_overrides` table)
 - API: `/api/features`, `/api/features/enable`, `/api/features/disable`
 - Single-tenant: flags apply to the one organization in this install
 
@@ -87,14 +105,18 @@ Chat types: `user_support`, `admin_support`, `general`
 | `vendor` | `company_id` | Optional (portal) | No |
 | `partner` | `company_id` | Optional (portal) | Optional |
 
-**Companies** (renamed from `clients`) hold all organization types: `client`, `vendor`, `partner`, `prospect`, `lead`. The `vendors` table was merged into `companies`.
+**Companies** (renamed from `clients`) hold all organization types. API enum
+(`app/api/portal/companies/route.ts`): `internal`, `client`, `customer`, `vendor`,
+`partner`, `prospect` — no `lead`. The column itself is unconstrained varchar
+defaulting to `client`, so the API enum IS the vocabulary. The `vendors` table was merged into `companies`.
 
 Customers CAN submit tickets. No invoicing -- export time entries for external billing.
 
 ## MTP pairing model (unified into api_keys 2026-06-09)
 
 External MSPs running Aegis MTP poll this client via `/api/v1/mtp/*`
-with a bearer key issued in `/portal/settings/integrations/mtp`.
+with a bearer key issued from the unified `/portal/settings/api-keys` page
+(key type "Aegis MTP pairing"). There is no `/portal/settings/integrations/mtp`.
 Storage backend (after migration 092): `api_keys` table with
 `key_type = 'aegis-mtp-pairing'`. Pre-migration this lived in
 `mtp_pairings`; that table was dropped and snapshotted to
@@ -105,7 +127,8 @@ Two security gates protect the key:
 1. **Time-bounded pairing window.** Issuance opens a 15-min window
    (`api_keys.pairing_window_expires_at`). Outside the window,
    `/handshake` refuses with 401 even if the key is otherwise valid.
-   Customer can extend via `POST .../{id}/extend-window`.
+   An `extendPairingWindow()` helper exists in `lib/mtp-pairings.ts` but NO HTTP
+   route exposes it — today an expired window means issuing a new key.
 2. **Single-use binding.** The first successful `/handshake` atomically
    sets `paired_at` + `paired_from_ip` + `paired_user_agent`.
    Subsequent `/handshake` calls refuse with `kind: 'already_paired'`.
@@ -139,8 +162,11 @@ detail view. It returns the list-shape fields PLUS `body` (full),
 `thread` (comments + internal notes + status/assignment/queue events,
 `?thread_limit` default 20 / cap 100, oldest-first), `related_assets`
 (≤10, `{name, warranty_expire, is_important}`), and `available_actions`
-(server-computed booleans; all false until the write path in Phase B'
-ships). Two rules that differ from the list endpoint:
+(server-computed booleans). The minimal write path SHIPPED
+2026-08-16, so `comment` / `status` / `assign` compute TRUE when the pairing key
+holds `tickets:write`; `escalate` and `close` stay false until Phase B ships
+queues and the close grant. Do not assume these are always false — pairing keys
+can already write.. Two rules that differ from the list endpoint:
 - It requires actor-assertion headers **even though it's a read** —
   `requireScope(req, 'tickets:read', { requireActorAssertion: true })`
   → 412 `missing-action-context` when absent. A full body/thread pull
@@ -187,7 +213,7 @@ Priorities: `low` (5d), `medium` (2d), `high` (1d), `urgent` (4h), `critical` (1
 
 | File | Purpose |
 |------|---------|
-| `lib/auth.ts` | Better Auth config (email, Google SSO, 2FA, admin, API keys) |
+| `lib/auth.ts` | Better Auth config (email, Google SSO, 2FA, admin, bearer, email OTP) — API keys are CUSTOM, see `lib/api-keys.ts` / `lib/api-auth.ts` |
 | `lib/permissions.ts` | RBAC permission checks (capabilities, ticket access levels) |
 | `lib/sla.ts` | SLA clock computation (read-only, works with DB trigger) |
 | `lib/db.ts` | Pool + query helpers (`pool`, `query`, `queryOne`) |
@@ -208,7 +234,7 @@ Priorities: `low` (5d), `medium` (2d), `high` (1d), `urgent` (4h), `critical` (1
 
 ## Email — provider abstraction (added 2026-05-13)
 
-Outbound email uses `@obilabs/email` (workspace package) — six pluggable
+Outbound email uses `@obilabs/email` (published npm package) — six pluggable
 providers (gmail-relay default, gmail-smtp, resend, ses, sendgrid,
 smtp). Config stored in `email_settings` (one row per org, AES-256-GCM
 envelope encrypted via `AEGIS_SECRETS_KEY`). Worker in
@@ -216,7 +242,9 @@ envelope encrypted via `AEGIS_SECRETS_KEY`). Worker in
 `sendViaConfiguredProvider()` in `lib/email-settings.ts`. Every attempt
 records to `email_attempts`.
 
-- **Don't** add a new provider here — add it in `packages/email`
+- **Don't** add a new provider here. `@obilabs/email` is a PUBLISHED npm package
+  (a dependency of this repo, not a workspace folder) — new providers go in its
+  own repo. Vendoring a copy here would fork the provider abstraction.
 - **Don't** read SMTP_* env vars (deprecated; 30-day grace, then removed)
 - **Don't** call provider SDKs directly — always go through `getProvider().sendEmail()`
 - **Do** fail-loud user-facing flows when `isEmailConfigured()` returns false (see `lib/auth.ts` forget-password handling for the pattern)
@@ -586,8 +614,8 @@ on `/api/setup/complete`.
 - Concise (500-1500 words is right; 3000+ is a book)
 - Explain WHY not just HOW
 - Cross-reference other seeded articles by slug
-- `is_system: true`, `is_reply_template: false` unless the
-  article is intentionally usable as a reply template
+- `is_system: true` for all seeded articles. (There is no
+  `is_reply_template` column — reply templates are unbuilt.)
 
 ## Do
 
