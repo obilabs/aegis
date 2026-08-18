@@ -33,5 +33,17 @@ docker-compose.override.yml
 # R&D logs (grant docs — local only, per CLAUDE.md)
 .rd_log/
 
+# Local-only notes. The `.local.md` suffix is the marker for a file that holds
+# working credentials / environment logins and must never be committed —
+# see LOCAL-TEST-ENV.local.md, which deliberately lives outside any repo.
+*.local.md
+
+# Static test credentials, at any depth. helios committed one of these on
+# 2026-07-27 (an email, a plaintext password and its bcrypt hash) and it is
+# still on every branch there. The durable fix is a seed script that GENERATES
+# credentials and prints them; this pattern stops the shape appearing here.
+**/TEST-CREDENTIALS.md
+**/TEST_CREDENTIALS.md
+
 # TS incremental build info
 tsconfig.tsbuildinfo
