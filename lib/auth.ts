@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth'
+import { buildTrustedOrigins } from '@/lib/trusted-origins'
 import { twoFactor, admin, bearer, emailOTP } from 'better-auth/plugins'
 import { createAuthMiddleware, APIError } from 'better-auth/api'
 import { Pool } from 'pg'
@@ -362,10 +363,10 @@ export const auth = betterAuth({
   // a comma-separated list. Better Auth requires the exact origin a
   // request comes from to be in this list, so a deploy reachable as
   // both X and Y needs both listed.
-  trustedOrigins: [
-    process.env.BETTER_AUTH_URL || 'http://localhost:3000',
-    ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) ?? []),
-  ],
+  // Loopback aliases are expanded and the final list is logged at boot — see
+  // lib/trusted-origins.ts for why a bare BETTER_AUTH_URL is a production
+  // lockout risk.
+  trustedOrigins: buildTrustedOrigins('http://localhost:3000', 'aegis'),
 })
 
 export type Session = typeof auth.$Infer.Session
