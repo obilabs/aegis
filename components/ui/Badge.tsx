@@ -47,6 +47,12 @@ export interface BadgeProps {
    * hatch is a style and not a class.
    */
   style?: React.CSSProperties
+  /**
+   * Native tooltip. Required whenever the label may be truncated — a badge that
+   * silently clips its text is worse than a long one, because the reader cannot
+   * tell there is more.
+   */
+  title?: string
 }
 
 const TONES: Record<Tone, string> = {
@@ -69,9 +75,10 @@ export function Badge({
   children,
   className,
   style,
+  title,
 }: BadgeProps) {
   return (
-    <span className={`${BASE} ${TONES[tone]} ${className ?? ''}`.trim()} style={style}>
+    <span className={`${BASE} ${TONES[tone]} ${className ?? ''}`.trim()} style={style} title={title}>
       {leftIcon ? (
         <span className="inline-flex items-center h-3 w-3">{leftIcon}</span>
       ) : null}
