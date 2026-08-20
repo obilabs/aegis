@@ -1394,23 +1394,26 @@ export default function TicketDetailPage() {
                               // BOTH halves, deliberately: the firm is who is
                               // accountable to you, the technician is who acted.
                               // Showing only one breaks the promise the KB makes.
-                              <span
-                                className="px-1.5 py-0.5 text-xs bg-violet-500/20 text-violet-300 rounded"
+                              //
+                              // Truncated rather than wrapped: as a raw span this
+                              // rendered TWO LINES tall (36px) next to one-line
+                              // pills, because it had no whitespace-nowrap. Badge
+                              // bakes that in; max-w + truncate keeps a long firm
+                              // name on one line, and `title` exposes the full text.
+                              <Badge
+                                tone="purple"
+                                className="max-w-[18rem] truncate"
                                 title={`External service provider${reply.msp?.technician_email ? ` — ${reply.msp.technician_email}` : ''}`}
                               >
                                 {reply.msp?.firm ? `${reply.msp.firm} · Service provider` : 'Service provider'}
-                              </span>
+                              </Badge>
                             )}
                             {isStaff && (
-                              <span className="px-1.5 py-0.5 text-xs bg-brand-500/20 text-brand-400 rounded">
+                              <Badge tone="brand" className="max-w-[18rem] truncate">
                                 {[reply.user?.job_title, reply.user?.department, reply.user?.company].filter(Boolean).join(' · ') || 'Staff'}
-                              </span>
+                              </Badge>
                             )}
-                            {reply.is_internal && (
-                              <span className="px-1.5 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
-                                Internal Note
-                              </span>
-                            )}
+                            {reply.is_internal && <Badge tone="amber">Internal Note</Badge>}
                             <span className="text-sm text-slate-500">{formatDate(reply.created_at)}</span>
                           </div>
                           <div
