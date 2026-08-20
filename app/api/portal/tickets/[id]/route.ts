@@ -173,7 +173,14 @@ export async function GET(
         uc.job_title_id,
         jt.name as job_title_name,
         uc.company_id as user_company_id,
-        co.name as user_company_name
+        co.name as user_company_name,
+        -- MSP provenance. A reply written through a pairing has NEITHER a
+        -- user_id NOR a contact_id — the author is external — so both joins
+        -- above yield NULL and the UI had nothing to render but "Unknown".
+        -- The data was always here; this endpoint simply never selected it.
+        tr.via_pairing_key_id,
+        tr.msp_actor_email,
+        ak.name as msp_firm_name
       FROM ticket_replies tr
       LEFT JOIN contacts c ON tr.contact_id = c.id
       LEFT JOIN users u ON tr.user_id = u.id
@@ -181,6 +188,7 @@ export async function GET(
       LEFT JOIN departments d ON uc.department_id = d.id
       LEFT JOIN job_titles jt ON uc.job_title_id = jt.id
       LEFT JOIN companies co ON uc.company_id = co.id
+      LEFT JOIN api_keys ak ON ak.id = tr.via_pairing_key_id
       WHERE tr.ticket_id = $1
       ORDER BY tr.created_at ASC
     `, [id])
@@ -204,6 +212,17 @@ export async function GET(
         job_title: r.job_title_name || null,
         company: r.user_company_name || null,
       } : null,
+      // Present when the reply came from a paired MSP. The seeded KB article
+      // promises "You see which person did it", so BOTH halves are surfaced:
+      // the firm that is accountable, and the individual technician who acted.
+      // `author_type` is the field the UI switches on so an MSP reply is
+      // visually distinct from internal staff — matching the MTP-facing
+      // endpoint, which already uses actor_type 'msp' for exactly this.
+      msp: r.via_pairing_key_id ? {
+        firm: r.msp_firm_name || null,
+        technician_email: r.msp_actor_email || null,
+      } : null,
+      author_type: r.via_pairing_key_id ? 'msp' : (r.user_id ? 'staff' : 'contact'),
     }))
 
     // Get requester's recent tickets (if contact exists)
