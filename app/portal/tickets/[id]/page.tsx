@@ -111,6 +111,13 @@ interface TicketReply {
     job_title?: string | null
     company?: string | null
   } | null
+  // Present only when the reply was written by a paired MSP. Such a reply has
+  // NEITHER `user` NOR `contact` — the author is external to this organization.
+  msp?: {
+    firm: string | null
+    technician_email: string | null
+  } | null
+  author_type?: 'msp' | 'staff' | 'contact'
 }
 
 interface RecentTicket {
@@ -1303,29 +1310,55 @@ export default function TicketDetailPage() {
                 <p className="p-4 text-slate-500 text-center">No replies yet</p>
               ) : (
                 replies.map((reply) => {
-                  const replyAuthor = reply.user 
-                    ? reply.user.name 
-                    : reply.contact 
-                      ? `${reply.contact.first_name} ${reply.contact.last_name}`
-                      : 'Unknown'
+                  // An MSP reply used to fall through every branch to 'Unknown',
+                  // because a paired firm's technician has no local user or
+                  // contact row. The seeded KB article promises the customer can
+                  // see who acted, so show the technician and name the firm.
+                  const isMsp = !!reply.msp
+                  const replyAuthor = isMsp
+                    ? (reply.msp?.technician_email || reply.msp?.firm || 'MSP')
+                    : reply.user
+                      ? reply.user.name
+                      : reply.contact
+                        ? `${reply.contact.first_name} ${reply.contact.last_name}`
+                        : 'Unknown'
                   const isStaff = !!reply.user
                   
                   return (
                     <div 
                       key={reply.id} 
-                      className={`p-4 ${reply.is_internal ? 'bg-yellow-500/5' : ''}`}
+                      className={`p-4 ${reply.is_internal ? 'bg-yellow-500/5' : ''} ${
+                        // A reply from an outside firm is a materially different
+                        // thing from one written by your own IT staff. The left
+                        // border carries that distinction even when the badges
+                        // are scrolled out of view.
+                        isMsp ? 'border-l-2 border-violet-400/70 bg-violet-500/5' : ''
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          isStaff 
-                            ? 'bg-brand-500/20 text-brand-400' 
-                            : 'bg-slate-700 text-slate-300'
+                          isMsp
+                            ? 'bg-violet-500/20 text-violet-300'
+                            : isStaff
+                              ? 'bg-brand-500/20 text-brand-400'
+                              : 'bg-slate-700 text-slate-300'
                         }`}>
-                          {replyAuthor.charAt(0)}
+                          {replyAuthor.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-slate-200">{replyAuthor}</span>
+                            {isMsp && (
+                              // BOTH halves, deliberately: the firm is who is
+                              // accountable to you, the technician is who acted.
+                              // Showing only one breaks the promise the KB makes.
+                              <span
+                                className="px-1.5 py-0.5 text-xs bg-violet-500/20 text-violet-300 rounded"
+                                title={`External service provider${reply.msp?.technician_email ? ` — ${reply.msp.technician_email}` : ''}`}
+                              >
+                                {reply.msp?.firm ? `${reply.msp.firm} · Service provider` : 'Service provider'}
+                              </span>
+                            )}
                             {isStaff && (
                               <span className="px-1.5 py-0.5 text-xs bg-brand-500/20 text-brand-400 rounded">
                                 {[reply.user?.job_title, reply.user?.department, reply.user?.company].filter(Boolean).join(' · ') || 'Staff'}
