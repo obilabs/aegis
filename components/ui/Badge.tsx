@@ -35,6 +35,18 @@ export interface BadgeProps {
   children: React.ReactNode
   /** Extra Tailwind classes if a one-off override is genuinely needed. */
   className?: string
+  /**
+   * Runtime-computed colour. The ONLY legitimate use is a value Tailwind cannot
+   * express as a class because it comes from data — e.g. `ticket_statuses.color`,
+   * which an admin picks per status.
+   *
+   * Do NOT reach for this to pass colour utility classes; `tone` exists for that.
+   * Passing `bg-*`/`border-*` through `className` puts them at the same
+   * specificity as TONES and the winner is decided by stylesheet order, not by
+   * what you wrote. An inline style is deterministic, which is why the escape
+   * hatch is a style and not a class.
+   */
+  style?: React.CSSProperties
 }
 
 const TONES: Record<Tone, string> = {
@@ -56,9 +68,10 @@ export function Badge({
   leftIcon,
   children,
   className,
+  style,
 }: BadgeProps) {
   return (
-    <span className={`${BASE} ${TONES[tone]} ${className ?? ''}`.trim()}>
+    <span className={`${BASE} ${TONES[tone]} ${className ?? ''}`.trim()} style={style}>
       {leftIcon ? (
         <span className="inline-flex items-center h-3 w-3">{leftIcon}</span>
       ) : null}
