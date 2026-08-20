@@ -1327,12 +1327,22 @@ export default function TicketDetailPage() {
                   return (
                     <div 
                       key={reply.id} 
-                      className={`p-4 ${reply.is_internal ? 'bg-yellow-500/5' : ''} ${
-                        // A reply from an outside firm is a materially different
-                        // thing from one written by your own IT staff. The left
-                        // border carries that distinction even when the badges
-                        // are scrolled out of view.
-                        isMsp ? 'border-l-2 border-violet-400/70 bg-violet-500/5' : ''
+                      className={`p-4 ${
+                        // Backgrounds are mutually exclusive on purpose. An
+                        // internal MSP note matches BOTH conditions, and two
+                        // competing bg-* classes resolve by stylesheet order,
+                        // not by the order written here — so the winner was
+                        // arbitrary. Internal keeps its established yellow tint;
+                        // the MSP signal is carried by the accent below.
+                        reply.is_internal ? 'bg-yellow-500/5' : isMsp ? 'bg-violet-500/5' : ''
+                      } ${
+                        // An inset shadow, NOT border-l-*: the parent's
+                        // `divide-slate-700` sets border-color on every child at
+                        // the same specificity, and it won — so an internal MSP
+                        // note rendered a slate edge and lost the distinction
+                        // entirely. Verified in the browser; computed style was
+                        // `2px rgb(51,65,85)` where violet was intended.
+                        isMsp ? 'shadow-[inset_3px_0_0_0_#a78bfa]' : ''
                       }`}
                     >
                       <div className="flex items-start gap-3">
