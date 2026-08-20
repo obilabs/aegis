@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { pool, queryOne } from '@/lib/db'
+import { logTicketFieldChange } from '@/lib/ticket-audit'
 import { hasCapability } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -109,6 +110,29 @@ export async function PATCH(
       `UPDATE tickets SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
       values
     )
+
+    // Also record to ticket_field_changes — the table the History tab reads.
+    //
+    // This route already logged to `ticket_history` below, but NOTHING reads
+    // that table: /api/portal/tickets/[id]/history selects from
+    // ticket_field_changes and ticket_replies only. There are three history
+    // tables in this schema (ticket_field_changes, ticket_history,
+    // ticket_status_history) and the UI reads one of them, so an assignment was
+    // recorded somewhere nobody looks — indistinguishable, from the user's side,
+    // from not being recorded at all.
+    //
+    // Consolidating the three is the durable fix and is deliberately not
+    // attempted here; this makes the assignment visible where the product
+    // already claims to show it.
+    try {
+      await logTicketFieldChange(
+        ticket.organization_id, id, 'assigned_to',
+        ticket.assigned_to, assigned_to ?? null, itsmUser.id, 'user',
+        assigned_to ? 'Assigned' : 'Unassigned'
+      )
+    } catch (auditError) {
+      console.error('Assign succeeded but history write failed:', auditError)
+    }
 
     // Log assignment in ticket_history
     await pool.query(
