@@ -46,11 +46,20 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   isLoading?: boolean
 }
 
+// Every variant carries a 1px border — transparent where none is wanted.
+//
+// Without this, `secondary` (which HAS a border) rendered 2px taller than
+// `primary`/`danger`/`ghost`, so a row mixing variants never lined up. Measured
+// on the ticket header: Claim (primary) 36px next to Change Status (secondary)
+// 38px. Two pixels is invisible in isolation and obvious in a row of four.
+//
+// Keep the transparent borders. Removing one reintroduces the mismatch on every
+// page that mixes variants, which is all of them.
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-brand-600 hover:bg-brand-700 text-white',
+  primary: 'bg-brand-600 hover:bg-brand-700 text-white border border-transparent',
   secondary: 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700',
-  danger: 'bg-red-600 hover:bg-red-700 text-white',
-  ghost: 'text-slate-400 hover:text-slate-200 hover:bg-slate-800',
+  danger: 'bg-red-600 hover:bg-red-700 text-white border border-transparent',
+  ghost: 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent',
 }
 
 const SIZES: Record<Size, string> = {

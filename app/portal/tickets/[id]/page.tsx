@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 import dynamic from 'next/dynamic'
 import { useFeature } from '@/lib/hooks/useFeatures'
 import { LinkItems } from '@/components/LinkItems'
@@ -245,6 +247,33 @@ const ACTION_STATE_LABELS: Record<string, string> = {
   scheduled: 'Scheduled',
   on_hold: 'On Hold',
   resolution_candidate: 'Resolution Candidate',
+}
+
+// Semantic tone per priority / action state.
+//
+// These REPLACE the colour class strings below for anything rendered through
+// <Badge>. Passing those class strings via Badge's `className` would put
+// `bg-*`/`border-*` at the same specificity as the primitive's own TONES, and
+// the winner would be decided by stylesheet order rather than intent — the
+// exact failure that made an MSP reply's accent silently render slate.
+const PRIORITY_TONE: Record<string, 'red' | 'amber' | 'blue' | 'slate'> = {
+  critical: 'red',
+  high: 'amber',
+  medium: 'blue',
+  low: 'slate',
+}
+
+const ACTION_STATE_TONE: Record<string, 'red' | 'amber' | 'blue' | 'slate' | 'purple'> = {
+  needs_agent_action: 'red',
+  escalation_needed: 'red',
+  needs_more_info: 'amber',
+  new_unreviewed: 'blue',
+  waiting_on_user: 'amber',
+  user_will_follow_up: 'slate',
+  waiting_on_vendor: 'slate',
+  waiting_on_internal: 'purple',
+  waiting_on_approval: 'amber',
+  waiting_on_parts: 'slate',
 }
 
 const ACTION_STATE_COLORS: Record<string, string> = {
@@ -800,77 +829,79 @@ export default function TicketDetailPage() {
         <span className="text-slate-200">{ticketNumber}</span>
       </div>
 
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <span className="px-2 py-1 text-sm font-mono bg-slate-800 border border-slate-700 rounded">
-              {ticketNumber}
-            </span>
-            <span 
-              className="px-2 py-0.5 text-xs font-medium rounded-full border"
-              style={statusStyle}
-            >
-              {ticket.status}
-            </span>
-            <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getPriorityColor(ticket.priority)}`}>
+      {/* Header
+          Stacks on narrow viewports. Previously `flex items-start justify-between`
+          with two nowrap rows: at 375px the badge row's right edge landed at 408px
+          and the ACTION row's at 776px — 400px past the viewport — and because the
+          page does not scroll horizontally, "Change Status" and "Edit" were not
+          merely misaligned, they were unreachable on a phone. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          {/* flex-wrap, so badges reflow instead of overflowing. Every pill is the
+              <Badge> primitive: previously this row mixed rounded-full/rounded,
+              text-xs/text-sm and py-0.5/py-1 — three shapes in one row. */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <Badge tone="slate" className="font-mono">{ticketNumber}</Badge>
+            {/* Runtime colour: ticket_statuses.color is admin-configurable, so no
+                Tailwind class can express it. This is what Badge's `style` escape
+                hatch is for. */}
+            <Badge style={statusStyle}>{ticket.status}</Badge>
+            <Badge tone={PRIORITY_TONE[ticket.priority?.toLowerCase()] ?? 'slate'}>
               {ticket.priority}
-            </span>
+            </Badge>
             {queueScore && (
-              <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${ACTION_STATE_COLORS[queueScore.actionState] || 'bg-slate-500/20 text-slate-400 border-slate-500/30'}`}>
+              <Badge tone={ACTION_STATE_TONE[queueScore.actionState] ?? 'slate'}>
                 {ACTION_STATE_LABELS[queueScore.actionState] || queueScore.actionState}
-              </span>
+              </Badge>
             )}
-            {slaInfo?.isPaused && (
-              <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                SLA PAUSED
-              </span>
-            )}
-            {slaInfo?.breached && (
-              <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-red-500/20 text-red-400 border-red-500/30">
-                SLA BREACHED
-              </span>
-            )}
-            {ticket.source && (
-              <span className="px-2 py-0.5 text-xs text-slate-400 bg-slate-800 rounded">
-                via {ticket.source}
-              </span>
-            )}
+            {slaInfo?.isPaused && <Badge tone="amber">SLA PAUSED</Badge>}
+            {slaInfo?.breached && <Badge tone="red">SLA BREACHED</Badge>}
+            {ticket.source && <Badge tone="slate">via {ticket.source}</Badge>}
           </div>
           <h1 className="text-2xl font-bold text-slate-100">{ticket.subject}</h1>
           <p className="text-slate-400 mt-1">
             Opened by {openedByName} • {formatDate(ticket.created_at)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Next Ticket */}
+        {/* Actions. flex-wrap + shrink-0 so they reflow onto a second line rather
+            than being pushed off-screen; on mobile this row now sits UNDER the
+            title instead of fighting it for width.
+
+            Every control is <Button size="md"> so they share one height and font.
+            Previously "Next Ticket" was text-sm while Claim / Change Status / Edit
+            inherited 16px, which is why they never lined up. */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Next Ticket — a Link, so Button renders as its child to keep
+              navigation semantics while inheriting the button's shape. */}
           {nextTicketId && (
-            <Link
-              href={`/portal/tickets/${nextTicketId}`}
-              className="flex items-center gap-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-700 text-sm transition-colors"
-            >
-              Next Ticket →
+            <Link href={`/portal/tickets/${nextTicketId}`}>
+              <Button variant="secondary" size="md" rightIcon={<span aria-hidden>→</span>}>
+                Next Ticket
+              </Button>
             </Link>
           )}
           {/* Claim Button — only when unassigned */}
           {!ticket.assigned_to && (
-            <button
+            <Button
               onClick={handleClaimTicket}
-              className="flex items-center gap-2 px-3 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-500 transition-colors"
+              variant="primary"
+              size="md"
+              leftIcon={<UserIcon className="h-4 w-4" />}
             >
-              <UserIcon className="h-4 w-4" />
               Claim
-            </button>
+            </Button>
           )}
           {/* Status Dropdown */}
           <div className="relative">
-            <button
+            <Button
               onClick={() => setShowStatusMenu(!showStatusMenu)}
-              className="relative z-30 flex items-center gap-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors"
+              variant="secondary"
+              size="md"
+              className="relative z-30"
+              rightIcon={<ChevronDownIcon className="h-4 w-4" />}
             >
               Change Status
-              <ChevronDownIcon className="h-4 w-4" />
-            </button>
+            </Button>
             {showStatusMenu && (
               <>
                 <div className="fixed inset-0 z-20" onClick={() => setShowStatusMenu(false)} />
@@ -898,13 +929,14 @@ export default function TicketDetailPage() {
               </>
             )}
           </div>
-          <button
+          <Button
             onClick={openEditModal}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors"
+            variant="secondary"
+            size="md"
+            leftIcon={<PencilIcon className="h-4 w-4" />}
           >
-            <PencilIcon className="h-4 w-4" />
             Edit
-          </button>
+          </Button>
         </div>
       </div>
 
