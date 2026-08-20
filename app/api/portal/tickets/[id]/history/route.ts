@@ -42,7 +42,18 @@ export async function GET(
         tfc.change_reason,
         tfc.created_at,
         COALESCE(CONCAT(u.first_name, ' ', u.last_name), ba.name, 'System') as actor_name,
-        u.email as actor_email
+        u.email as actor_email,
+        -- An MSP-driven change has changed_by NULL (the actor is external), so
+        -- the COALESCE above resolved to the literal 'System'. That is not just
+        -- unhelpful, it is WRONG: a person at a paired firm did this, and the
+        -- seeded KB article promises the customer can see who. change_source is
+        -- a structured discriminator ('msp' | 'user'), so switch on it rather
+        -- than inferring from a NULL.
+        (CASE
+           WHEN tfc.change_source = 'msp' THEN 'msp'
+           WHEN tfc.changed_by IS NOT NULL THEN 'staff'
+           ELSE 'system'
+         END) as actor_type
       FROM ticket_field_changes tfc
       LEFT JOIN users u ON tfc.changed_by = u.id
       LEFT JOIN "user" ba ON tfc.changed_by::text = ba.id
@@ -53,6 +64,21 @@ export async function GET(
     // Resolve human-readable names for status_id, category_id, assigned_to changes
     const fieldEvents = await Promise.all(changesResult.rows.map(async (row) => {
       const event: Record<string, unknown> = { ...row }
+
+      // Surface the individual technician behind an MSP change.
+      //
+      // ticket_field_changes carries no msp_actor_email / via_pairing_key_id
+      // (unlike ticket_replies), so the only record of WHO is the free-text
+      // change_reason the write path stamps: "via MTP pairing by <email> (REF)".
+      // Parsing that is a fallback, not a design — the durable fix is to mirror
+      // ticket_replies and add structured actor columns to this table. Until
+      // then this degrades honestly: if the shape does not match we say "MSP"
+      // rather than inventing a name, and we never say "System" for an MSP act.
+      if (row.actor_type === 'msp') {
+        const tech = /via MTP pairing by\s+(\S+?@\S+?)\s*(?:\(|$)/i.exec(row.change_reason || '')
+        event.msp = { technician_email: tech ? tech[1] : null }
+        event.actor_name = tech ? tech[1] : 'MSP'
+      }
 
       if (row.field_name === 'status_id') {
         if (row.old_value) {
