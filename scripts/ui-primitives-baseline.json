@@ -1,0 +1,346 @@
+{
+  "app/portal/access/bulk/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 4
+  },
+  "app/portal/access/new/page.tsx": {
+    "rawButton": 14,
+    "adhocPill": 5
+  },
+  "app/portal/access/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 2
+  },
+  "app/portal/account/api-keys/page.tsx": {
+    "rawButton": 6,
+    "adhocPill": 2
+  },
+  "app/portal/account/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/activity/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 1
+  },
+  "app/portal/admin/contacts/trash/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 0
+  },
+  "app/portal/assets/onboarding/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 1
+  },
+  "app/portal/assets/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 0
+  },
+  "app/portal/assets/[id]/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 1
+  },
+  "app/portal/backlog/page.tsx": {
+    "rawButton": 12,
+    "adhocPill": 2
+  },
+  "app/portal/chat/page.tsx": {
+    "rawButton": 13,
+    "adhocPill": 5
+  },
+  "app/portal/companies/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/companies/[id]/page.tsx": {
+    "rawButton": 3,
+    "adhocPill": 0
+  },
+  "app/portal/contacts/new/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 0
+  },
+  "app/portal/contacts/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 4
+  },
+  "app/portal/contacts/[id]/page.tsx": {
+    "rawButton": 4,
+    "adhocPill": 2
+  },
+  "app/portal/credentials/page.tsx": {
+    "rawButton": 17,
+    "adhocPill": 0
+  },
+  "app/portal/dashboard/page.tsx": {
+    "rawButton": 5,
+    "adhocPill": 4
+  },
+  "app/portal/documents/page.tsx": {
+    "rawButton": 16,
+    "adhocPill": 1
+  },
+  "app/portal/documents/[id]/page.tsx": {
+    "rawButton": 6,
+    "adhocPill": 2
+  },
+  "app/portal/forgot-password/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/groups/page.tsx": {
+    "rawButton": 23,
+    "adhocPill": 5
+  },
+  "app/portal/kb/page.tsx": {
+    "rawButton": 0,
+    "adhocPill": 1
+  },
+  "app/portal/kb/suggestions/page.tsx": {
+    "rawButton": 3,
+    "adhocPill": 0
+  },
+  "app/portal/kb/[slug]/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 1
+  },
+  "app/portal/kb/[slug]/[articleSlug]/page.tsx": {
+    "rawButton": 4,
+    "adhocPill": 0
+  },
+  "app/portal/layout.tsx": {
+    "rawButton": 10,
+    "adhocPill": 1
+  },
+  "app/portal/login/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 0
+  },
+  "app/portal/notes/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 0
+  },
+  "app/portal/operations/certificates/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 1
+  },
+  "app/portal/operations/domains/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 1
+  },
+  "app/portal/operations/networks/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/operations/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 3
+  },
+  "app/portal/people/locations/page.tsx": {
+    "rawButton": 6,
+    "adhocPill": 0
+  },
+  "app/portal/people/org-chart/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 0
+  },
+  "app/portal/policies/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 2
+  },
+  "app/portal/providers/page.tsx": {
+    "rawButton": 3,
+    "adhocPill": 0
+  },
+  "app/portal/queue/page.tsx": {
+    "rawButton": 4,
+    "adhocPill": 1
+  },
+  "app/portal/register/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/request/hardware/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 0
+  },
+  "app/portal/requests/approvals/page.tsx": {
+    "rawButton": 4,
+    "adhocPill": 0
+  },
+  "app/portal/requests/catalog/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 1
+  },
+  "app/portal/requests/new/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 0
+  },
+  "app/portal/requests/new/[slug]/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 1
+  },
+  "app/portal/requests/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/requests/[id]/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/reset-password/page.tsx": {
+    "rawButton": 3,
+    "adhocPill": 0
+  },
+  "app/portal/services/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 1
+  },
+  "app/portal/services/[id]/page.tsx": {
+    "rawButton": 18,
+    "adhocPill": 6
+  },
+  "app/portal/settings/ai/page.tsx": {
+    "rawButton": 14,
+    "adhocPill": 5
+  },
+  "app/portal/settings/ai/prompts/page.tsx": {
+    "rawButton": 5,
+    "adhocPill": 1
+  },
+  "app/portal/settings/api-keys/page.tsx": {
+    "rawButton": 14,
+    "adhocPill": 3
+  },
+  "app/portal/settings/applications/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 0
+  },
+  "app/portal/settings/approval-workflows/page.tsx": {
+    "rawButton": 16,
+    "adhocPill": 0
+  },
+  "app/portal/settings/asset-catalog/page.tsx": {
+    "rawButton": 20,
+    "adhocPill": 1
+  },
+  "app/portal/settings/catalog/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 0
+  },
+  "app/portal/settings/categories/page.tsx": {
+    "rawButton": 12,
+    "adhocPill": 3
+  },
+  "app/portal/settings/checklists/page.tsx": {
+    "rawButton": 9,
+    "adhocPill": 2
+  },
+  "app/portal/settings/company-email/page.tsx": {
+    "rawButton": 4,
+    "adhocPill": 2
+  },
+  "app/portal/settings/data-retention/page.tsx": {
+    "rawButton": 3,
+    "adhocPill": 0
+  },
+  "app/portal/settings/delegation/page.tsx": {
+    "rawButton": 17,
+    "adhocPill": 2
+  },
+  "app/portal/settings/departments/page.tsx": {
+    "rawButton": 8,
+    "adhocPill": 1
+  },
+  "app/portal/settings/domains/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 5
+  },
+  "app/portal/settings/email/page.tsx": {
+    "rawButton": 8,
+    "adhocPill": 1
+  },
+  "app/portal/settings/features/page.tsx": {
+    "rawButton": 4,
+    "adhocPill": 4
+  },
+  "app/portal/settings/job-titles/page.tsx": {
+    "rawButton": 13,
+    "adhocPill": 3
+  },
+  "app/portal/settings/kb-contributors/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 3
+  },
+  "app/portal/settings/knowledge-base/gaps/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 0
+  },
+  "app/portal/settings/knowledge-base/page.tsx": {
+    "rawButton": 9,
+    "adhocPill": 2
+  },
+  "app/portal/settings/master-data/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 2
+  },
+  "app/portal/settings/operating-systems/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 0
+  },
+  "app/portal/settings/page.tsx": {
+    "rawButton": 0,
+    "adhocPill": 1
+  },
+  "app/portal/settings/roles/page.tsx": {
+    "rawButton": 14,
+    "adhocPill": 1
+  },
+  "app/portal/settings/statuses/page.tsx": {
+    "rawButton": 7,
+    "adhocPill": 4
+  },
+  "app/portal/settings/telemetry/page.tsx": {
+    "rawButton": 6,
+    "adhocPill": 1
+  },
+  "app/portal/settings/ticket-types/page.tsx": {
+    "rawButton": 6,
+    "adhocPill": 2
+  },
+  "app/portal/settings/users/page.tsx": {
+    "rawButton": 12,
+    "adhocPill": 1
+  },
+  "app/portal/setup/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/setup/wizard/page.tsx": {
+    "rawButton": 10,
+    "adhocPill": 1
+  },
+  "app/portal/support/page.tsx": {
+    "rawButton": 5,
+    "adhocPill": 0
+  },
+  "app/portal/tickets/new/page.tsx": {
+    "rawButton": 11,
+    "adhocPill": 0
+  },
+  "app/portal/tickets/page.tsx": {
+    "rawButton": 2,
+    "adhocPill": 2
+  },
+  "app/portal/tickets/[id]/page.tsx": {
+    "rawButton": 19,
+    "adhocPill": 4
+  },
+  "app/portal/two-factor/backup/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  },
+  "app/portal/two-factor/page.tsx": {
+    "rawButton": 1,
+    "adhocPill": 0
+  }
+}

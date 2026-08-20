@@ -36,6 +36,18 @@ jobs:
         # workspace and no token needed.
         run: pnpm install --frozen-lockfile
 
+      - name: UI primitive ratchet
+        # CLAUDE.md has forbidden rolling your own <button> since 2026-06-09.
+        # On 2026-08-20 the ticket detail page alone had 22 raw <button>, zero
+        # <Button> and zero <Badge>; app/portal had 576 raw buttons in 84 files.
+        # A rule that is only written down is not a rule.
+        #
+        # This is a ratchet, not a ban: scripts/ui-primitives-baseline.json
+        # records today's per-file counts. A file may not exceed its count and no
+        # new file may appear, so the debt can only shrink. Refresh the baseline
+        # with `node scripts/check-ui-primitives.mjs --update` when you reduce it.
+        run: node scripts/check-ui-primitives.mjs
+
       - name: Verify Settings landing links resolve
         # portal-nav-cleanup: every href in app/portal/settings/page.tsx that
         # starts with /portal/ MUST resolve to a real page.tsx on disk. Catches
