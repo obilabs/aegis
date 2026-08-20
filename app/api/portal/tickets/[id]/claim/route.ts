@@ -1,4 +1,5 @@
 import { pool, queryOne } from '@/lib/db'
+import { logTicketFieldChange } from '@/lib/ticket-audit'
 import { getAuthContext } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -85,6 +86,36 @@ export async function POST(
       `UPDATE tickets SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
       values
     )
+
+    // Record the assignment in ticket history.
+    //
+    // This route mutated `assigned_to` and wrote NOTHING to
+    // ticket_field_changes, so claiming a ticket left no trace on the History
+    // tab — the assignee changed and the audit trail stayed silent.
+    //
+    // The helper already existed, and its own docstring says "every field
+    // mutation is tracked" for SOC2 CC8.1; only the main PATCH route called it.
+    // Note the perverse result before this fix: an EXTERNAL MSP's changes WERE
+    // recorded (lib/mtp-write.ts logs them) while the customer's own staff
+    // actions were not.
+    //
+    // Non-blocking on purpose: a history write must never fail a claim the user
+    // already sees as done. Logged loudly rather than swallowed.
+    try {
+      await logTicketFieldChange(
+        orgId, ticketId, 'assigned_to',
+        ticket.assigned_to, itsmUser.id, userId, 'user', 'Claimed ticket'
+      )
+      if (transitioned) {
+        await logTicketFieldChange(
+          orgId, ticketId, 'status_id',
+          ticket.status_id, values[1] as string, userId, 'system',
+          'Auto-transitioned on claim'
+        )
+      }
+    } catch (auditError) {
+      console.error('Claim succeeded but history write failed:', auditError)
+    }
 
     // Re-score after claim
     try {
