@@ -113,6 +113,29 @@ async function storeSnapshot(orgId: string, snapshot: CachedLicenseSnapshot): Pr
         WHERE id = $2`,
       [JSON.stringify(snapshot), orgId],
     )
+
+    // Remember that this organisation HAS supported the project, separately from
+    // whether it currently does.
+    //
+    // The snapshot above is CURRENT state; it cannot answer "were they ever a
+    // donor?" once a plan lapses. Without that, a past supporter is
+    // indistinguishable from a stranger and gets the cold ask again — which is
+    // exactly what stops people giving a second time.
+    //
+    // Written into the existing settings JSONB, so no migration. Records THAT
+    // they supported and when it was last seen; never that they stopped.
+    if (snapshot.plan === 'donor') {
+      await query(
+        `UPDATE organizations
+            SET settings = jsonb_set(
+                  COALESCE(settings, '{}'::jsonb),
+                  '{supporter}',
+                  jsonb_build_object('last_donor_at', to_jsonb(NOW()))
+                )
+          WHERE id = $1`,
+        [orgId],
+      )
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.warn(`[license-heartbeat] could not persist licence snapshot: ${message}`)
