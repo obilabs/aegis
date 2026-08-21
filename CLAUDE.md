@@ -30,20 +30,41 @@
 
 ## Docker Testing
 
-See root `CLAUDE.md` for the full workflow. Quick reference:
+Two build paths, and the **tag tells you which one produced an image**. See
+`obilabs-platform/CLAUDE.md` for the full rationale.
+
+**Inner loop — build from source.** Fastest, costs nothing, and does not depend
+on GitHub Actions being available (on 2026-08-21 it was not: the account hit its
+billing limit and every build across all repos failed for four hours).
 
 ```bash
-# Purge → Pull → Start (always clean slate)
-docker compose down -v --rmi all
-docker compose pull && docker compose up -d
-# Watch logs: docker compose logs -f web
+V=local-$(git rev-parse --short HEAD)
+AEGIS_VERSION=$V docker compose build aegis
+AEGIS_VERSION=$V docker compose up -d
+docker compose logs -f aegis
 ```
 
-Set `AEGIS_VERSION` in `.env`. It defaults to `0.1.0`, which is a tag this
-workflow currently REPUBLISHES on every merge to main — so it is not a version,
-it is a moving pointer. Use `latest` to test current main until the immutable-tag
-policy (already applied in obilabs-platform) is ported here. Images built by
-GitHub Actions.
+The `local-` prefix is deliberate: an untagged local build takes the compose
+default `0.1.0` and silently shadows the CI image of that name in your daemon,
+so you test one artifact and ship another. Never `docker push` a `local-*` tag.
+
+**Testing a CI build — pin `sha-<commit>`, never `latest`.**
+
+```bash
+AEGIS_VERSION=sha-<commit> docker compose pull && docker compose up -d
+```
+
+`AEGIS_VERSION` defaults to `0.1.0`, and **that default is a trap.** Since the
+immutable-tag policy landed here, `main` publishes only `edge` and `sha-*`;
+`latest` and `0.1.0` both froze at commit `283b4a1` on 2026-08-17 and have not
+moved since (verified 2026-08-21 against the GHCR API). There are no `v*` tags in
+this repo, so nothing will ever move them again. Pulling either SUCCEEDS and
+gives you stale code with nothing reporting a problem — Verification Rule 2 in
+its purest form. Set the var explicitly, every time.
+
+**Wiping:** `docker compose down -v` wipes **nothing** here — Aegis uses bind
+mounts, so `rm -rf ./data` is the only true wipe. And `--rmi all` deletes your
+local build along with everything else; omit it in the inner loop.
 
 ## Database
 
