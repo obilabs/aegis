@@ -121,14 +121,24 @@ export async function GET(request: NextRequest) {
       ageDays,
       cooldownDays: COOLDOWN_DAYS,
       // Copy lives here so it can change without a rebuild of every consumer.
+      //
+      // THE SOFTWARE DOES NOT GET CREDIT FOR THE TEAM'S WORK.
+      // The first draft said "Aegis has resolved 240 tickets for you" — which is
+      // false. Technicians resolved those tickets; Aegis is where they did it.
+      // Taking credit for someone's work and then asking them for money on the
+      // strength of it is the exact posture this product exists to argue
+      // against, and an IT team reads that sentence and knows immediately who
+      // actually did the work.
+      //
+      // The subject of these sentences is always the customer, never Aegis.
       message: wasDonor
         ? 'You have supported ObiLabs before — thank you. If Aegis is still ' +
           'useful, please continue to support us to keep making it better.'
         : basis === 'tickets'
-          ? `Aegis has resolved ${resolved} tickets for you. If it is useful, ` +
-            'please support us to keep making Aegis better.'
-          : `Aegis has been looking after your team for ${ageDays} days. If it ` +
-            'is useful, please support us to keep making Aegis better.',
+          ? `Your team has resolved ${resolved} tickets with Aegis. If it is ` +
+            'useful, please support us to keep making Aegis better.'
+          : `Your team has been running Aegis for ${ageDays} days. If it is ` +
+            'useful, please support us to keep making Aegis better.',
     })
   } catch (error) {
     // Never let this break a page. An ask that 500s is worse than no ask.
