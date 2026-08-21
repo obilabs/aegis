@@ -101,9 +101,22 @@ export async function GET(request: NextRequest) {
     )
     const wasDonor = Boolean(supporter.rows[0]?.last_donor_at)
 
+    // WHICH threshold opened the ask decides what we can honestly claim here.
+    // The gate above passes on tickets OR age, so an install that has been
+    // running a month and resolved nothing reaches this line — and telling that
+    // operator "Aegis has resolved 0 tickets for you" is worse than not asking
+    // at all: it makes the ask look automated and unearned, which is exactly the
+    // thing tying it to value delivered was meant to avoid.
+    //
+    // Found 2026-08-21 by exercising the POSITIVE path against a running
+    // container. The refusal path cannot surface it and neither can tsc — both
+    // were green while this rendered.
+    const basis = resolved >= MIN_RESOLVED_TICKETS ? 'tickets' : 'time'
+
     return NextResponse.json({
       show: true,
       tone: wasDonor ? 'returning' : 'first',
+      basis,
       resolved,
       ageDays,
       cooldownDays: COOLDOWN_DAYS,
@@ -111,8 +124,11 @@ export async function GET(request: NextRequest) {
       message: wasDonor
         ? 'You have supported ObiLabs before — thank you. If Aegis is still ' +
           'useful, please continue to support us to keep making it better.'
-        : `Aegis has resolved ${resolved} tickets for you. If it is useful, ` +
-          'please support us to keep making Aegis better.',
+        : basis === 'tickets'
+          ? `Aegis has resolved ${resolved} tickets for you. If it is useful, ` +
+            'please support us to keep making Aegis better.'
+          : `Aegis has been looking after your team for ${ageDays} days. If it ` +
+            'is useful, please support us to keep making Aegis better.',
     })
   } catch (error) {
     // Never let this break a page. An ask that 500s is worse than no ask.
