@@ -333,7 +333,7 @@
   },
   "app/portal/tickets/[id]/page.tsx": {
     "rawButton": 19,
-    "adhocPill": 4
+    "adhocPill": 2
   },
   "app/portal/two-factor/backup/page.tsx": {
     "rawButton": 1,

@@ -11,6 +11,7 @@ import { LinkItems } from '@/components/LinkItems'
 import {
   TicketIcon,
   UserIcon,
+  BuildingOfficeIcon,
   ServerStackIcon,
   DocumentTextIcon,
   PencilIcon,
@@ -1378,13 +1379,25 @@ export default function TicketDetailPage() {
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          isMsp
-                            ? 'bg-violet-500/20 text-violet-300'
-                            : isStaff
-                              ? 'bg-brand-500/20 text-brand-400'
-                              : 'bg-slate-700 text-slate-300'
-                        }`}>
+                        {/* The avatar showed a bare initial and revealed nothing on
+                            hover — the one element in this row carrying no
+                            information at all. It now holds the full identity,
+                            which is also where a truncated firm name stays
+                            readable. shrink-0 so it never squashes. */}
+                        <div
+                          title={
+                            isMsp
+                              ? `${replyAuthor}${reply.msp?.firm ? ` — ${reply.msp.firm}` : ''} (external service provider)`
+                              : replyAuthor
+                          }
+                          className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-sm font-medium ${
+                            isMsp
+                              ? 'bg-violet-500/20 text-violet-300'
+                              : isStaff
+                                ? 'bg-brand-500/20 text-brand-400'
+                                : 'bg-slate-700 text-slate-300'
+                          }`}
+                        >
                           {replyAuthor.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
@@ -1402,10 +1415,15 @@ export default function TicketDetailPage() {
                               // name on one line, and `title` exposes the full text.
                               <Badge
                                 tone="purple"
-                                className="max-w-[18rem] truncate"
-                                title={`External service provider${reply.msp?.technician_email ? ` — ${reply.msp.technician_email}` : ''}`}
+                                className="max-w-[14rem] truncate"
+                                leftIcon={<BuildingOfficeIcon className="h-3 w-3" />}
+                                title={
+                                  reply.msp?.firm
+                                    ? `${reply.msp.firm} — external service provider`
+                                    : 'External service provider'
+                                }
                               >
-                                {reply.msp?.firm ? `${reply.msp.firm} · Service provider` : 'Service provider'}
+                                {reply.msp?.firm || 'Service provider'}
                               </Badge>
                             )}
                             {isStaff && (
