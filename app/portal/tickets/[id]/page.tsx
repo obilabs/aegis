@@ -340,6 +340,30 @@ function formatDate(dateString: string) {
   })
 }
 
+/**
+ * Compact timestamp for a reply header.
+ *
+ * `formatDate` renders "Aug 17, 2026, 1:55 AM" — 21 characters competing with an
+ * author, a firm badge and an Internal Note badge on one line. At phone width it
+ * was what pushed the row onto a second line and squeezed the firm name into
+ * "Northwind e2e fina…".
+ *
+ * The year is dropped, and only for the CURRENT year: an older ticket still shows
+ * it, because "Aug 17" on a two-year-old reply is actively misleading. The full
+ * value stays available via `title`.
+ */
+function formatReplyTime(dateString: string) {
+  const d = new Date(dateString)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 function formatDuration(seconds: number): string {
   if (seconds < 0) return 'overdue'
   const h = Math.floor(seconds / 3600)
@@ -1401,8 +1425,21 @@ export default function TicketDetailPage() {
                           {replyAuthor.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-slate-200">{replyAuthor}</span>
+                          {/* Two rows on a narrow screen, one on a wide one.
+                              Four items (author, firm, Internal Note, date) shared a single
+                              nowrap line: at phone width the firm badge truncated to
+                              "Northwind e2e fina…" and the date spilled onto a second line
+                              by accident.
+                          
+                              Splitting deliberately beats hiding. Initials-plus-hover was
+                              considered and REJECTED: there is no hover on a phone, so
+                              anything behind `title` vanishes for exactly the users on the
+                              screen where we were hiding it — and a firm's initials are
+                              opaque to a customer who never sees the name spelled out. */}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                            <span className="font-medium text-slate-200 break-all sm:break-normal">
+                              {replyAuthor}
+                            </span>
                             {isMsp && (
                               // BOTH halves, deliberately: the firm is who is
                               // accountable to you, the technician is who acted.
@@ -1415,7 +1452,7 @@ export default function TicketDetailPage() {
                               // name on one line, and `title` exposes the full text.
                               <Badge
                                 tone="purple"
-                                className="max-w-[14rem] truncate"
+                                className="max-w-[9rem] sm:max-w-[16rem] truncate"
                                 leftIcon={<BuildingOfficeIcon className="h-3 w-3" />}
                                 title={
                                   reply.msp?.firm
@@ -1432,7 +1469,17 @@ export default function TicketDetailPage() {
                               </Badge>
                             )}
                             {reply.is_internal && <Badge tone="amber">Internal Note</Badge>}
-                            <span className="text-sm text-slate-500">{formatDate(reply.created_at)}</span>
+                            {/* The year is noise on a ticket you are reading now, and it is what
+                                pushed the timestamp onto its own line. Short form displayed, full
+                                value in `title` — a SAFE use of hover, because the short form is
+                                already complete enough to act on. Contrast the firm name and the
+                                author, which must stay visible. */}
+                            <span
+                              className="text-sm text-slate-500 whitespace-nowrap sm:ml-auto"
+                              title={formatDate(reply.created_at)}
+                            >
+                              {formatReplyTime(reply.created_at)}
+                            </span>
                           </div>
                           <div
                             className="prose prose-invert prose-sm max-w-none text-slate-300"
