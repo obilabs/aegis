@@ -9,7 +9,6 @@ import {
   TicketIcon,
   ComputerDesktopIcon,
   BookOpenIcon,
-  ChatBubbleLeftRightIcon,
   ArrowRightIcon,
   EyeIcon,
   EyeSlashIcon,
@@ -135,15 +134,15 @@ export default function LoginPage() {
               <p className="text-slate-400 text-sm">Find answers to common questions and how-to guides</p>
             </div>
           </div>
-          <div className="flex items-start gap-4">
-            <div className="p-2 bg-orange-500/10 rounded-lg">
-              <ChatBubbleLeftRightIcon className="h-6 w-6 text-orange-400" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-white">AI-Powered Support</h3>
-              <p className="text-slate-400 text-sm">Get instant help from our AI assistant for quick resolutions</p>
-            </div>
-          </div>
+          {/*
+            The "AI-Powered Support" block was removed 2026-08-23: AI chat is a
+            feature flag that ships OFF, so the sign-in page was promising a
+            capability that dead-ends at "AI Assistant is not enabled" once you
+            get inside (2026-08-21 UI survey). A self-hosted install should not
+            advertise on its login what that install has not turned on. If AI is
+            ever surfaced pre-auth, gate it on the org's feature flag, not a
+            hardcoded panel.
+          */}
         </div>
 
         {/* Footer */}
