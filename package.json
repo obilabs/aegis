@@ -15,7 +15,8 @@
     "db:generate": "npx @better-auth/cli generate",
     "db:migrate": "npx @better-auth/cli migrate",
     "seed:admin": "npx tsx scripts/seed-admin.ts",
-    "seed:data": "Get-Content database/seed.sql | docker exec -i aegis_postgres psql -U postgres -d aegis"
+    "seed:data": "Get-Content database/seed.sql | docker exec -i aegis_postgres psql -U postgres -d aegis",
+    "check:secrets": "node scripts/check-no-secrets.mjs"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
