@@ -1,0 +1,23 @@
+name: Path Hygiene
+
+# Fast, build-free guards that run on every PR and push to main.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  no-committed-credentials:
+    name: No committed credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Scan tracked files for credentials
+        # A CONTENT gate: .gitignore is path-based and cannot stop a password
+        # hardcoded inside a committed file. Ported from obilabs-platform /
+        # helios so all three repos guard this the same way.
+        run: node scripts/check-no-secrets.mjs
