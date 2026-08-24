@@ -1,0 +1,131 @@
+name: CLA
+
+# Blocks a pull request until every human commit author has agreed to the
+# Contributor License Agreement (CLA.md). "Agreed" = their GitHub username is
+# listed in .github/cla-signers.yml (organization / individuals / entities).
+#
+# Design notes:
+#   - pull_request_target so the check can read the signers file from the BASE
+#     branch and comment on fork PRs. It does NOT check out or run PR code — it
+#     only calls the GitHub API and reads the base-branch signers file, so the
+#     elevated token is never exposed to untrusted code.
+#   - Bots are exempt. A PR that ONLY edits .github/cla-signers.yml is exempt
+#     (that PR is the act of signing — see CLA.md).
+#   - The signers file is read from the base checkout, so a PR cannot sign
+#     itself by adding a name in the same PR that carries its code.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  cla:
+    name: Check CLA signatures
+    runs-on: ubuntu-latest
+    steps:
+      # Checks out the BASE branch (default for pull_request_target), which is
+      # where the trusted copy of the signers file lives.
+      - uses: actions/checkout@v4
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const SIGNERS_FILE = '.github/cla-signers.yml';
+            const MARKER = '<!-- cla-check -->';
+            const pr = context.payload.pull_request;
+
+            // 1. If the PR only touches the signers file, it's a signing PR — pass.
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number,
+            });
+            const onlySigners =
+              files.length > 0 && files.every(f => f.filename === SIGNERS_FILE);
+            if (onlySigners) {
+              core.info('PR only edits the signers file (a signing PR) — exempt.');
+              return;
+            }
+
+            // 2. Build the allowlist from the base-branch signers file. Any GitHub
+            //    handle appearing as a "- item" in any list counts (comments start
+            //    with # and are ignored).
+            let allow = new Set();
+            try {
+              const text = fs.readFileSync(SIGNERS_FILE, 'utf8');
+              for (const m of text.matchAll(/^\s*-\s*([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)/gm)) {
+                allow.add(m[1].toLowerCase());
+              }
+            } catch (e) {
+              core.warning(`Could not read ${SIGNERS_FILE}: ${e.message}`);
+            }
+
+            // 3. Collect human commit authors. author.login is null when the commit
+            //    email isn't linked to a GitHub account — we can't verify those.
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number,
+            });
+            const unsigned = new Set();
+            const unlinked = new Set();
+            for (const c of commits) {
+              const a = c.author;
+              if (!a || !a.login) { unlinked.add(c.commit.author.email); continue; }
+              if (a.type === 'Bot' || a.login.endsWith('[bot]')) continue;
+              if (!allow.has(a.login.toLowerCase())) unsigned.add(a.login);
+            }
+
+            // 4. Report.
+            const ok = unsigned.size === 0 && unlinked.size === 0;
+            let body = `${MARKER}\n### Contributor License Agreement\n\n`;
+            if (ok) {
+              body += `✅ All commit authors have agreed to the ` +
+                `[CLA](../blob/${pr.base.ref}/CLA.md). Thank you!`;
+            } else {
+              body += `Before this PR can be merged, every commit author must agree ` +
+                `to the [Contributor License Agreement](../blob/${pr.base.ref}/CLA.md).\n\n`;
+              if (unsigned.size) {
+                body += `**Not yet signed:** ` +
+                  [...unsigned].map(u => `@${u}`).join(', ') + `\n\n` +
+                  `To sign: open a one-line PR adding your username to ` +
+                  `\`${SIGNERS_FILE}\` with a description saying you agree to the CLA ` +
+                  `(see **How to sign** in CLA.md). A maintainer merges it, then ` +
+                  `re-run this check.\n\n`;
+              }
+              if (unlinked.size) {
+                body += `**Commits from an email not linked to a GitHub account:** ` +
+                  [...unlinked].map(e => `\`${e}\``).join(', ') + `. ` +
+                  `Add that email to your GitHub account (Settings → Emails) so the ` +
+                  `author can be identified, then push again.\n\n`;
+              }
+            }
+
+            // 5. Sticky comment: update the existing CLA comment or create one.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(MARKER));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            } else if (!ok) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: pr.number, body,
+              });
+            }
+
+            if (!ok) {
+              core.setFailed(
+                `CLA not satisfied — unsigned: ${[...unsigned].join(', ') || 'none'}; ` +
+                `unlinked emails: ${[...unlinked].join(', ') || 'none'}.`
+              );
+            }
