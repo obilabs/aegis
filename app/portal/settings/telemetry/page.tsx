@@ -15,7 +15,7 @@ interface TelemetryLogEntry {
 }
 
 const TIER_LABELS: Record<number, { name: string; description: string }> = {
-  0: { name: 'Install Ping Only', description: 'Anonymous install count — sent once' },
+  0: { name: 'Liveness (install + daily ping)', description: 'Anonymous install count — once at install, then daily' },
   1: { name: 'Setup Snapshot', description: 'One-time anonymous setup details (industry, team size, features)' },
   2: { name: 'Usage Heartbeat', description: 'Daily anonymous usage metrics (ticket ranges, module adoption)' },
 }
@@ -187,8 +187,9 @@ export default function TelemetrySettingsPage() {
               )}
             </div>
             <p className="text-sm text-slate-400">
-              Master kill-switch. When off, no payload is sent — including the install ping
-              and license re-validation. The tier toggles below only matter when this is on.
+              Master kill-switch. When off, no payload is sent — including the daily
+              liveness ping, the install ping, and license re-validation. The tier
+              toggles below only matter when this is on.
             </p>
             {envOverrideActive && (
               <p className="text-xs text-amber-300/80 mt-2">
@@ -255,6 +256,11 @@ export default function TelemetrySettingsPage() {
           <code className="block mt-2 text-xs text-slate-500 font-mono bg-slate-900/50 p-2 rounded">
             {TIER_PAYLOADS[0]}
           </code>
+          <p className="text-xs text-slate-500 mt-2">
+            The recurring daily liveness ping sends only{' '}
+            <code className="font-mono">{'{ instance_id, version }'}</code> — no
+            usage, no PII — so a running install stays counted as active.
+          </p>
         </div>
 
         {/* Tier 1 */}
@@ -453,7 +459,7 @@ export default function TelemetrySettingsPage() {
           <li>Counts are sent as ranges (e.g. "6-20 users") to prevent re-identification</li>
           <li>All payloads are logged here before sending — nothing hidden</li>
           <li>Telemetry tier can be changed at any time — downgrading takes effect immediately</li>
-          <li>Master kill-switch above suppresses every send including the install ping</li>
+          <li>Master kill-switch above suppresses every send including the install ping and the daily liveness ping</li>
         </ul>
       </div>
 

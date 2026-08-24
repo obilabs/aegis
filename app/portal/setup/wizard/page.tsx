@@ -588,7 +588,7 @@ export default function SetupWizardPage() {
                       Disable all telemetry
                     </span>
                     <span className="ml-2 text-xs text-slate-500">
-                      (no install ping, no license re-validation, nothing)
+                      (no liveness ping, no install ping, no license re-validation — nothing)
                     </span>
                   </div>
                   <div className={`w-8 h-5 rounded-full transition-colors ${
@@ -608,23 +608,35 @@ export default function SetupWizardPage() {
               {/* Tier toggles — disabled visually when master is off */}
               <div className={formData.telemetry_disabled ? 'opacity-40 pointer-events-none' : ''}>
 
-              {/* Tier 0 — sent on install */}
+              {/* Tier 0 — anonymous liveness: install ping (once) + alive ping (daily) */}
               <div className="p-3 bg-slate-900/50 rounded border border-slate-700">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-medium text-slate-300">Install Ping + License</span>
-                    <span className="ml-2 text-xs text-slate-500">(sent once)</span>
+                    <span className="text-xs font-medium text-slate-300">Anonymous liveness ping</span>
+                    <span className="ml-2 text-xs text-slate-500">(once at install, then daily)</span>
                   </div>
                   <span className="text-xs text-slate-500 italic">
                     {formData.telemetry_disabled ? 'Suppressed' : 'Default on'}
                   </span>
                 </div>
                 <code className="block mt-1 text-xs text-slate-500 font-mono">
-                  {'{ instance_id, version, license_key, installed_at }'}
+                  {'install: { instance_id, version, license_key, installed_at }'}
+                </code>
+                <code className="block mt-0.5 text-xs text-slate-500 font-mono">
+                  {'daily:   { instance_id, version }'}
                 </code>
                 <p className="mt-1 text-xs text-slate-500">
-                  Your license key lets you claim this instance for support later.
+                  A random ID and the version — no usage, no PII. The daily ping is
+                  how a self-hosted install stays counted as active; without it,
+                  community installs drop off after 30 days. A license key, if you
+                  have one, lets you claim this instance for support later.
                 </p>
+              </div>
+
+              <div className="pt-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Usage telemetry — optional, off unless you turn it on
+                </span>
               </div>
 
               {/* Tier 1 */}
