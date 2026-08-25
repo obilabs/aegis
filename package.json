@@ -12,8 +12,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:generate": "npx @better-auth/cli generate",
-    "db:migrate": "npx @better-auth/cli migrate",
+    "db:generate": "npx @better-auth/cli@latest generate",
+    "db:migrate": "npx @better-auth/cli@latest migrate",
     "seed:admin": "npx tsx scripts/seed-admin.ts",
     "seed:data": "Get-Content database/seed.sql | docker exec -i aegis_postgres psql -U postgres -d aegis",
     "check:secrets": "node scripts/check-no-secrets.mjs"
@@ -22,7 +22,7 @@
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@aws-sdk/client-s3": "^3.999.0",
     "@aws-sdk/s3-request-presigner": "^3.999.0",
-    "@better-auth/passkey": "~1.4.18",
+    "@better-auth/passkey": "~1.6.30",
     "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
@@ -33,12 +33,12 @@
     "@obilabs/licensing": "^0.1.2",
     "@scalar/nextjs-api-reference": "^0.9.19",
     "bcryptjs": "^2.4.3",
-    "better-auth": "~1.4.18",
+    "better-auth": "~1.6.22",
     "imapflow": "~1.3.2",
     "lucide-react": "^0.468.0",
     "mailparser": "^3.9.8",
     "next": "^15.5.12",
-    "nodemailer": "^8.0.6",
+    "nodemailer": "^9.0.5",
     "pg": "^8.13.0",
     "pg-boss": "^12.9.0",
     "react": "^19.0.0",
@@ -46,7 +46,6 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
-    "@better-auth/cli": "~1.4.18",
     "@tailwindcss/typography": "^0.5.15",
     "@types/bcryptjs": "^2.4.6",
     "@types/mailparser": "^3.4.5",
@@ -56,12 +55,22 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0",
+    "postcss": "^8.5.23",
     "tailwindcss": "^3.4.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vite-tsconfig-paths": "^5.1.0",
-    "vitest": "^2.1.0"
+    "vitest": "^3.2.6"
   },
-  "packageManager": "pnpm@10.19.0"
+  "packageManager": "pnpm@10.19.0",
+  "pnpm": {
+    "overrides": {
+      "nodemailer": "^9.0.5",
+      "sharp": "^0.35.3",
+      "postcss": "^8.5.23",
+      "deepmerge-ts": "^8.0.2",
+      "vite": "^6.4.3",
+      "esbuild": "^0.25.0"
+    }
+  }
 }
