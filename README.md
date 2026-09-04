@@ -8,23 +8,32 @@ A [ObiLabs](https://obilabs.dev) project.
 
 ## Telemetry & Privacy
 
-Aegis phones home to the ObiLabs control plane (default
-`https://api.obilabs.dev`) on first boot and periodically thereafter,
-sending anonymized usage data and validating the license. The master
-kill-switch is `TELEMETRY_ENABLED`:
+Aegis separates two very different things and defaults them differently:
+
+- **Anonymous liveness ping** — *on by default, one click to turn off.* Sent
+  once at install and then daily, it carries only a random instance ID and the
+  version — `{ instance_id, version }` — with no PII and no usage data. It
+  exists so active installs can be counted: community installs carry no licence,
+  so without it a running install would silently drop out of the count 30 days
+  after setup. It is disclosed in the first-boot wizard, not buried.
+- **Usage telemetry** — *off by default, opt-in.* A one-time setup snapshot
+  (industry, team-size, feature list) and a daily usage heartbeat (ranges only:
+  ticket-volume band, user-count band, modules enabled). You pick the level in
+  the wizard or in Settings.
+
+No organization name, domain, email, IP, or ticket content ever leaves your
+box. The master kill-switch turns off **everything**, liveness included:
 
 ```env
-# Disable ALL outbound telemetry, including license re-validation pings.
-# The license keeps working locally; it just isn't re-checked until the
-# variable is removed and the container restarted.
+# Disable ALL outbound telemetry, including the daily liveness ping and
+# license re-validation. The license keeps working locally; it just isn't
+# re-checked until the variable is removed and the container restarted.
 TELEMETRY_ENABLED=false
 ```
 
 The env var beats any in-app setting. In-app control lives at
-**Settings → Telemetry & Privacy** (admin-only). The full payload format
-is documented at the control plane's `/privacy` page; every consent
-state change is recorded in the `telemetry_consent_log` table (append-
-only). This is consent-first by design per
+**Settings → Telemetry** (admin-only). Every consent state change is recorded
+in the `telemetry_consent_log` table (append-only). Consent-first by design per
 [PRINCIPLES.md](../../PRINCIPLES.md) #2.
 
 ---
@@ -68,34 +77,40 @@ Aegis Client is a single-tenant ITSM platform. One instance per organization, al
 
 ### Feature Status
 
-| Feature | Status | Category | Notes |
-|---------|--------|----------|-------|
-| Ticket Management | Stable | Core | Incidents, requests, tasks, custom statuses |
-| Contact Management | Stable | Core | People, companies, departments, job titles |
-| Authentication | Stable | Core | Email/password, Google SSO, 2FA |
-| Knowledge Base | Stable | Standard | Articles, categories, search, feedback, policies, training |
-| Asset Management | Stable | Standard | Hardware/software inventory, lifecycle tracking |
-| Credential Vault | Stable | Standard | AES-256 encrypted password storage |
-| Company Management | Stable | Standard | Companies, locations, org hierarchy |
-| Dashboard | Stable | Standard | Ops dashboard + My Hub with role-aware switching |
-| Email Integration | Beta | Standard | Ticket creation from email, notifications |
-| API Access | Stable | Standard | REST API for integrations |
-| SLA Management | Beta | Advanced | Response/resolution targets, pause/resume |
-| Custom Statuses | Beta | Advanced | Map custom names to open/pending/closed |
-| Vendor Management | Beta | Advanced | Vendors, contracts, support contacts |
-| Service Catalog | Beta | Advanced | Services, costs, access request workflows |
-| Onboarding/Offboarding | Beta | Advanced | Structured employee lifecycle workflows |
-| Policies & Procedures | Beta | Advanced | Policy articles with acknowledgment tracking |
-| AI Support Chat | Beta | Advanced | Multi-provider (Gemini, OpenAI, Ollama) |
-| AI Suggestions | Beta | Advanced | Smart ticket/KB suggestions |
-| Smart Queue | Beta | Advanced | Priority-scored ticket queue |
-| AI Triage | Alpha | Enterprise | AI categorization and routing |
-| Workspaces | Alpha | Enterprise | Multi-department helpdesks |
-| Teams & Routing | Alpha | Enterprise | Team-based assignment |
-| Approval Workflows | Alpha | Enterprise | Multi-level change approvals |
-| Provider Access | Beta | Enterprise | MSP access with granular permissions |
-| Webhooks | Coming Soon | Advanced | External event delivery |
-| SSO (SAML/OIDC) | Coming Soon | Enterprise | Enterprise single sign-on |
+Everything below ships in **this repository** under AGPL-3.0. There are no paid
+tiers, no license keys that unlock features, and nothing held back as
+"enterprise" — **Status** is a maturity signal (Stable → Beta → Alpha → Coming
+Soon), not an availability gate. If it's in the table, it's in the box you
+self-host.
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Ticket Management | Stable | Incidents, requests, tasks, custom statuses |
+| Contact Management | Stable | People, companies, departments, job titles |
+| Authentication | Stable | Email/password, Google SSO, 2FA |
+| Knowledge Base | Stable | Articles, categories, search, feedback, policies, training |
+| Asset Management | Stable | Hardware/software inventory, lifecycle tracking |
+| Credential Vault | Stable | AES-256 encrypted password storage |
+| Company Management | Stable | Companies, locations, org hierarchy |
+| Dashboard | Stable | Ops dashboard + My Hub with role-aware switching |
+| Email Integration | Beta | Ticket creation from email, notifications |
+| API Access | Stable | REST API for integrations |
+| SLA Management | Beta | Response/resolution targets, pause/resume |
+| Custom Statuses | Beta | Map custom names to open/pending/closed |
+| Vendor Management | Beta | Vendors, contracts, support contacts |
+| Service Catalog | Beta | Services, costs, access request workflows |
+| Onboarding/Offboarding | Beta | Structured employee lifecycle workflows |
+| Policies & Procedures | Beta | Policy articles with acknowledgment tracking |
+| AI Support Chat | Beta | Multi-provider (Gemini, OpenAI, Ollama) |
+| AI Suggestions | Beta | Smart ticket/KB suggestions |
+| Smart Queue | Beta | Priority-scored ticket queue |
+| AI Triage | Alpha | AI categorization and routing |
+| Workspaces | Alpha | Multi-department helpdesks |
+| Teams & Routing | Alpha | Team-based assignment |
+| Approval Workflows | Alpha | Multi-level change approvals |
+| Provider Access | Beta | Grant scoped, audited, instantly-revocable access to an external MSP/partner. This is the **client side** — the org controls who sees its data; the MSP's own multi-tenant portal is a separate product. |
+| Webhooks | Coming Soon | External event delivery |
+| SSO (SAML/OIDC) | Coming Soon | SAML/OIDC single sign-on |
 
 ---
 
@@ -331,6 +346,16 @@ database/
 | Per-User Fees | No | No | Yes ($19-119/mo) |
 | AI Integration | Multi-provider | Basic | Freddy AI |
 | MCP Server | Yes | No | No |
+
+---
+
+## Contributing
+
+Contributions are welcome. First-time contributors agree to the
+[Contributor License Agreement](CLA.md) with a one-line pull request — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for that, plus branch/commit conventions, the
+CI gates, and the PR checklist. A CLA check runs on every pull request. You keep
+the copyright to your work; the CLA is a licence grant, not an assignment.
 
 ---
 

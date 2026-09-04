@@ -24,7 +24,7 @@ export default function PrivacyPage() {
           <p className="text-xl text-gray-600">
             We believe in complete transparency about data collection. Here&apos;s exactly what we collect, why, and how you benefit.
           </p>
-          <p className="text-sm text-gray-500 mt-4">Last updated: December 2024</p>
+          <p className="text-sm text-gray-500 mt-4">Last updated: August 2026</p>
         </div>
 
         {/* TL;DR */}
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
           <ul className="space-y-2 text-primary-800">
             <li className="flex items-start gap-2">
               <span className="text-primary-600 font-bold">1.</span>
-              <span><strong>Self-hosted:</strong> We collect nothing unless you opt-in.</span>
+              <span><strong>Self-hosted:</strong> only an anonymous liveness ping by default (a random ID + version — one click to turn it off). Everything else is opt-in.</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-primary-600 font-bold">2.</span>
@@ -61,42 +61,37 @@ export default function PrivacyPage() {
           </h2>
 
           <div className="space-y-6">
-            {/* Instance Health */}
+            {/* Anonymous liveness — install ping (once) + alive ping (daily) */}
             <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="font-semibold text-gray-900 mb-3">Instance Health</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Anonymous liveness ping</h3>
               <p className="text-gray-600 mb-4">
-                Basic information to know your instance is running correctly.
+                On by default (one click to turn off). Sent once at install, then
+                once a day, so active installs can be counted. A random instance ID
+                and the version — nothing else, no usage, no PII.
               </p>
               <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm">
-                <div className="text-gray-500">{`// What we receive`}</div>
-                <div className="text-gray-800">{`{`}</div>
-                <div className="text-gray-800 pl-4">{`"instance_id": "Aegis_abc123...",`}</div>
-                <div className="text-gray-800 pl-4">{`"version": "1.2.3",`}</div>
-                <div className="text-gray-800 pl-4">{`"uptime_hours": 720,`}</div>
-                <div className="text-gray-800 pl-4">{`"outcome": "success"`}</div>
-                <div className="text-gray-800">{`}`}</div>
+                <div className="text-gray-500">{`// install (once)`}</div>
+                <div className="text-gray-800">{`{ "instance_id": "Aegis_abc123...", "version": "1.2.3",`}</div>
+                <div className="text-gray-800 pl-4">{`"license_key": null, "installed_at": "2026-08-24T..." }`}</div>
+                <div className="text-gray-500 mt-2">{`// daily liveness (recurring)`}</div>
+                <div className="text-gray-800">{`{ "instance_id": "Aegis_abc123...", "version": "1.2.3" }`}</div>
               </div>
             </div>
 
-            {/* Usage Metrics */}
+            {/* Usage Metrics — opt-in */}
             <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="font-semibold text-gray-900 mb-3">Usage Metrics</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Usage Metrics (opt-in)</h3>
               <p className="text-gray-600 mb-4">
-                Anonymous counts of which features are used. This directly shapes what we build next.
+                Off unless you turn it on. Anonymous ranges — never exact counts —
+                of how Aegis is used. This directly shapes what we build next.
               </p>
               <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm">
                 <div className="text-gray-500">{`// What we receive`}</div>
                 <div className="text-gray-800">{`{`}</div>
-                <div className="text-gray-800 pl-4">{`"user_count_range": "51-100",`}</div>
-                <div className="text-gray-800 pl-4">{`"modules_enabled": ["signatures", "google-sync"],`}</div>
-                <div className="text-gray-800 pl-4">{`"api_usage": {`}</div>
-                <div className="text-gray-800 pl-8">{`"users.list": 142,`}</div>
-                <div className="text-gray-800 pl-8">{`"groups.list": 89`}</div>
-                <div className="text-gray-800 pl-4">{`},`}</div>
-                <div className="text-gray-800 pl-4">{`"command_usage": {`}</div>
-                <div className="text-gray-800 pl-8">{`"sync_users": 12,`}</div>
-                <div className="text-gray-800 pl-8">{`"deploy_signatures": 8`}</div>
-                <div className="text-gray-800 pl-4">{`}`}</div>
+                <div className="text-gray-800 pl-4">{`"user_count_range": "6-20",`}</div>
+                <div className="text-gray-800 pl-4">{`"ticket_volume": { "total_range": "51-100", "open": 12 },`}</div>
+                <div className="text-gray-800 pl-4">{`"modules_enabled": ["tickets", "kb", "assets"],`}</div>
+                <div className="text-gray-800 pl-4">{`"uptime_hours": 720`}</div>
                 <div className="text-gray-800">{`}`}</div>
               </div>
             </div>
@@ -214,10 +209,12 @@ export default function PrivacyPage() {
             <div className="border border-gray-200 rounded-lg p-6">
               <h3 className="font-semibold text-gray-900 mb-3">Self-Hosted Instances</h3>
               <p className="text-gray-600 mb-4">
-                Telemetry is <strong>enabled by default</strong> after the setup
-                wizard&apos;s explicit consent step. You can disable it any time
-                at <code className="text-gray-800">/portal/settings/telemetry</code>,
-                or via a container-level env var that overrides the in-app setting:
+                Only the anonymous liveness ping is <strong>on by default</strong>
+                (disclosed in the setup wizard, one click to turn off). Usage
+                metrics are <strong>opt-in</strong>. You control all of it at
+                <code className="text-gray-800"> /portal/settings/telemetry</code>,
+                or kill everything with a container-level env var that overrides
+                the in-app setting:
               </p>
               <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm">
                 <div className="text-gray-500"># In your .env file — beats any in-app setting</div>
@@ -322,7 +319,7 @@ export default function PrivacyPage() {
               Our telemetry code is open source. You can see exactly what we send:
             </p>
             <code className="bg-white px-3 py-2 rounded border border-gray-200 text-sm text-gray-800 block">
-              backend/src/services/telemetry.service.ts
+              lib/telemetry.ts · lib/alive-ping.ts · lib/telemetry-consent.ts
             </code>
             <p className="text-gray-500 text-sm mt-4">
               Every piece of data we collect is visible in the source code. No hidden tracking.
