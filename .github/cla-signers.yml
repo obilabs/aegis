@@ -1,0 +1,27 @@
+# Aegis CLA — signature registry.
+#
+# This file is the source of truth for who has agreed to the Contributor
+# License Agreement (../CLA.md). The "CLA" GitHub Action (workflows/cla.yml)
+# reads it on every pull request and blocks any PR whose commit authors are not
+# listed here (bots and PRs that only edit this file are exempt).
+#
+# Three lists, all treated equally by the check — a GitHub username in ANY of
+# them satisfies the gate:
+#
+#   organization : ObiLabs employees/contractors. Covered by their employment
+#                  or contractor terms; no separate CLA row needed. Maintainers
+#                  add people here.
+#   individuals  : external individuals who have signed CLA.md (via the one-line
+#                  signing PR described in CLA.md → "How to sign").
+#   entities     : companies that signed the entity form on behalf of their
+#                  staff. Use `- handle  # Company Name — contact@company`.
+#
+# To sign: see CLA.md. Add your GitHub username under `individuals:` in a pull
+# request whose description says you agree to the CLA. That PR is your signature.
+
+organization:
+  - openmoto        # Michael Agu — ObiLabs
+
+individuals: []
+
+entities: []
