@@ -104,7 +104,6 @@ const ALLOWED: Record<string, Reason> = {
   'portal/tasks/[id] PATCH': "caller's own personal tasks (owner in WHERE)",
   'portal/telemetry-consent-banner GET': 'returns only whether to show the consent banner',
   'portal/ticket-statuses GET': 'status names and colours',
-  'portal/tickets POST': 'anyone may raise a ticket; change/problem types are role-checked inside',
   'settings/portal GET': 'one display flag (portal guidance on/off)',
   'support/conversations DELETE': "caller's own support conversations (owner in WHERE)",
   'support/conversations GET': "caller's own support conversations",
