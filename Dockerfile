@@ -36,7 +36,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apk add --no-cache postgresql-client
+# su-exec: the entrypoint starts as root only to hand the secrets mount to the
+# app user, then drops privileges (see docker-entrypoint.sh).
+RUN apk add --no-cache postgresql-client su-exec
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -57,9 +59,17 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts/seed-admin.mjs ./seed-adm
 COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./
 
 RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
-RUN chown nextjs:nodejs /app
+RUN chown nextjs:nodejs /app \
+    && mkdir -p /app/data/secrets \
+    && chown -R nextjs:nodejs /app/data \
+    && chmod 700 /app/data/secrets
 
-USER nextjs
+# No `USER nextjs` here: a Docker-created bind mount or named volume for
+# /app/data/secrets is owned by root, and the app (uid 1001) could not persist
+# its generated keys there. The entrypoint fixes ownership of that one
+# directory as root and then re-executes itself as nextjs via su-exec, so the
+# server never runs as root. Running with an explicit `user:` still works; the
+# entrypoint then skips the ownership step and warns if the mount is read-only.
 
 EXPOSE 3000
 
