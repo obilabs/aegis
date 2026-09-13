@@ -16,7 +16,7 @@ const createArticleSchema = z.object({
   status: z.enum(['draft', 'published', 'review']).default('draft'),
   tags: z.array(z.string()).optional(),
   article_type: z.enum(['standard', 'policy', 'procedure', 'training']).default('standard'),
-  assessment_dsl: z.string().optional(),
+  assessment_dsl: z.string().nullable().optional(),
   passing_score: z.number().min(0).max(100).default(80),
   visible_to_roles: z.array(z.string().uuid()).optional(),
   visible_to_companies: z.array(z.string().uuid()).optional(),
