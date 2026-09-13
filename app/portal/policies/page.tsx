@@ -22,6 +22,8 @@ import {
 
 interface Policy {
   id: string
+  slug: string
+  categorySlug: string
   name: string
   description: string
   policyType: string
@@ -129,7 +131,7 @@ export default function PoliciesPage() {
           <p className="text-slate-400 mt-1">Manage company policies and track acknowledgments</p>
         </div>
         <Link
-          href="/portal/policies/new"
+          href="/portal/kb/new?type=policy"
           className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-500 transition-colors"
         >
           <PlusIcon className="h-4 w-4" />
@@ -296,14 +298,17 @@ export default function PoliciesPage() {
                     {/* Actions */}
                     <div className="flex items-center gap-2">
                       <Link
-                        href={`/portal/policies/${policy.id}`}
+                        href={`/portal/kb/${policy.categorySlug}/${policy.slug}`}
                         className="p-2 text-slate-400 hover:text-brand-400 hover:bg-slate-700 rounded-lg transition-colors"
                       >
                         <EyeIcon className="h-5 w-5" />
                       </Link>
-                      <button className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors">
+                      <Link
+                        href={`/portal/kb/${policy.categorySlug}/${policy.slug}/edit`}
+                        className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors"
+                      >
                         <PencilIcon className="h-5 w-5" />
-                      </button>
+                      </Link>
                     </div>
                   </div>
 

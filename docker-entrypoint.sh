@@ -1,6 +1,22 @@
 #!/bin/sh
 set -e
 
+# Privilege drop. The image starts as root only so it can hand the secrets
+# directory to the app user: Docker creates a missing bind-mount source (or a
+# new named volume) owned by root, and the app runs as uid 1001, so without
+# this the auto-generated BETTER_AUTH_SECRET / CREDENTIAL_ENCRYPTION_KEY could
+# not be saved and would change on every restart (signing everyone out and
+# making stored credentials unreadable). Only that one directory is touched;
+# everything after this block runs as nextjs.
+if [ "$(id -u)" = "0" ]; then
+    SECRETS_DIR="${AEGIS_SECRETS_DIR:-/app/data/secrets}"
+    mkdir -p "$SECRETS_DIR" 2>/dev/null || true
+    chown -R nextjs:nodejs "$SECRETS_DIR" 2>/dev/null \
+        && chmod 700 "$SECRETS_DIR" 2>/dev/null \
+        || echo "WARN: could not change ownership of $SECRETS_DIR (continuing)."
+    exec su-exec nextjs:nodejs "$0" "$@"
+fi
+
 echo "============================================"
 echo "Aegis - Starting up..."
 echo "============================================"

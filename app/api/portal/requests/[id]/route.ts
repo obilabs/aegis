@@ -26,7 +26,7 @@ export async function GET(
         ci.icon as item_icon, ci.requires_approval, ci.request_form,
         ci.estimated_fulfillment_days,
         CONCAT(req.first_name, ' ', req.last_name) as requester_name,
-        req.email as requester_email, req.department as requester_department,
+        req.email as requester_email, COALESCE((SELECT d.name FROM departments d WHERE d.id = req.department_id), req.department_legacy) as requester_department,
         req.title as requester_title,
         CONCAT(approver.name) as approved_by_name,
         CONCAT(rejector.name) as rejected_by_name

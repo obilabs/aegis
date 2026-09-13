@@ -6,6 +6,7 @@ import { TrainingProgressWidget } from './TrainingProgressWidget'
 import { MySoftwareWidget } from './MySoftwareWidget'
 import { MyHardwareWidget } from './MyHardwareWidget'
 import { MyTicketsWidget } from './MyTicketsWidget'
+import { useFeature } from '@/lib/hooks/useFeatures'
 
 interface MyHubProps {
   userName: string
@@ -14,6 +15,8 @@ interface MyHubProps {
 }
 
 export function MyHub({ userName, jobTitle, department }: MyHubProps) {
+  // AI is off by default; only offer "Ask AI" when the assistant is enabled.
+  const { isEnabled: aiChatEnabled } = useFeature('ai_chat')
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -29,7 +32,7 @@ export function MyHub({ userName, jobTitle, department }: MyHubProps) {
       </div>
 
       {/* Quick Actions */}
-      <QuickActions />
+      <QuickActions aiEnabled={aiChatEnabled} />
 
       {/* Widgets Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

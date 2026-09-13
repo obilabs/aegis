@@ -295,12 +295,32 @@ function getFeatureBadge(featureKey?: string): { text: string; color: string } |
   return null
 }
 
+// These pages have their own layout (no sidebar).
+const STANDALONE_PAGES = ['/portal/login', '/portal/setup', '/portal/two-factor']
+
 function PortalLayoutInner({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // Choose standalone vs. shell before any other hook runs. The layout instance
+  // survives client-side navigation, so an early return placed above hooks
+  // changes the hook count between renders: signing in (login -> dashboard)
+  // crashed the page with React error #310.
   const pathname = usePathname()
+  if (STANDALONE_PAGES.some(page => pathname.startsWith(page))) {
+    return <>{children}</>
+  }
+  return <PortalShell pathname={pathname}>{children}</PortalShell>
+}
+
+function PortalShell({
+  children,
+  pathname,
+}: {
+  children: React.ReactNode
+  pathname: string
+}) {
   const router = useRouter()
   const { data: session, isPending } = useSession()
   const [showDropdown, setShowDropdown] = useState(false)
@@ -326,12 +346,6 @@ function PortalLayoutInner({
   // localStorage-only; banner reappears next session if no real consent
   // change was made via /portal/settings/telemetry.
   const [showTelemetryBanner, setShowTelemetryBanner] = useState(false)
-
-  // These pages have their own layout (no sidebar)
-  const standalonePages = ['/portal/login', '/portal/setup', '/portal/two-factor']
-  if (standalonePages.some(page => pathname.startsWith(page))) {
-    return <>{children}</>
-  }
 
   const handleLogout = async () => {
     await signOut()

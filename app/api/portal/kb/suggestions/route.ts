@@ -24,9 +24,11 @@ export async function GET(request: NextRequest) {
       WHERE m.role = 'user'
         AND s.organization_id = $1
         AND NOT EXISTS (
-          SELECT 1 FROM ai_solution_tracking st
-          WHERE st.session_id = s.id
-            AND st.solution_type = 'kb_article'
+          -- no assistant reply in the session cited a KB article
+          SELECT 1 FROM ai_chat_messages am
+          WHERE am.session_id = s.id
+            AND am.role = 'assistant'
+            AND COALESCE(array_length(am.kb_articles_referenced, 1), 0) > 0
         )
       GROUP BY m.content
       HAVING COUNT(*) >= 2

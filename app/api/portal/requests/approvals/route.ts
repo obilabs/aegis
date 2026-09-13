@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         ci.requires_approval,
         CONCAT(req.first_name, ' ', req.last_name) as requester_name,
         req.email as requester_email,
-        req.department as requester_department,
+        COALESCE((SELECT d.name FROM departments d WHERE d.id = req.department_id), req.department_legacy) as requester_department,
         req.title as requester_title
       FROM service_requests sr
       JOIN catalog_items ci ON sr.catalog_item_id = ci.id

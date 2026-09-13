@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
       `SELECT
         ka.id,
         ka.title AS name,
+        ka.slug,
+        kc.slug AS category_slug,
         ka.summary AS description,
         ka.article_type AS policy_type,
         kc.name AS category,
@@ -98,6 +100,8 @@ export async function GET(request: NextRequest) {
 
     const mapped = policies.map((p: any) => ({
       id: p.id,
+      slug: p.slug,
+      categorySlug: p.category_slug || 'general',
       name: p.name,
       description: p.description || '',
       policyType: p.policy_type || 'company_policy',

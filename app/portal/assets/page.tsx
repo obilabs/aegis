@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react'
 interface Asset {
   id: string
   name: string
-  asset_tag: string
-  type: string
+  asset_tag: string | null
+  type: string | null
   make: string
   model: string
-  serial_number: string
+  serial_number: string | null
   status: 'active' | 'deployed' | 'storage' | 'retired' | 'disposed'
   assigned_to?: string
   contact_is_deleted?: boolean
@@ -51,8 +51,8 @@ export default function AssetsPage() {
     }
   }
 
-  const getTypeIcon = (type: string) => {
-    switch (type.toLowerCase()) {
+  const getTypeIcon = (type: string | null) => {
+    switch ((type || '').toLowerCase()) {
       case 'desktop':
         return (
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -121,13 +121,13 @@ export default function AssetsPage() {
 
   const filteredAssets = assets.filter(asset => {
     if (statusFilter !== 'all' && asset.status !== statusFilter) return false
-    if (typeFilter !== 'all' && asset.type.toLowerCase() !== typeFilter) return false
+    if (typeFilter !== 'all' && (asset.type || '').toLowerCase() !== typeFilter) return false
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (
         asset.name.toLowerCase().includes(query) ||
-        asset.asset_tag.toLowerCase().includes(query) ||
-        asset.serial_number.toLowerCase().includes(query) ||
+        (asset.asset_tag || '').toLowerCase().includes(query) ||
+        (asset.serial_number || '').toLowerCase().includes(query) ||
         asset.assigned_to?.toLowerCase().includes(query) ||
         asset.location?.toLowerCase().includes(query)
       )
@@ -290,7 +290,7 @@ export default function AssetsPage() {
                       </Link>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-slate-400">{asset.type}</span>
+                      <span className="text-sm text-slate-400">{asset.type || '—'}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(asset.status)}`}>

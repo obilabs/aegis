@@ -28,9 +28,11 @@ export async function GET(request: NextRequest) {
         al.last_activity_at
       FROM service_providers sp
       LEFT JOIN (
+        -- provider_users has no organization_id; it is scoped through
+        -- provider_id, and the outer query already limits providers to this org.
         SELECT provider_id, COUNT(*) as active_users
         FROM provider_users
-        WHERE organization_id = $1 AND is_active = true
+        WHERE is_active = true
         GROUP BY provider_id
       ) pu ON sp.id = pu.provider_id
       LEFT JOIN (
