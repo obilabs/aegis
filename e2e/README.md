@@ -22,7 +22,7 @@ touch the app, the image or this suite. Failed runs upload `e2e/artifacts`.
 The stack is compose project `aegis-e2e` with `e2e/compose.e2e.yml` layered on
 the unchanged `docker-compose.yml`:
 
-- containers are named `aegis-e2e-*`, so it runs beside another Aegis install;
+- containers are named `aegis-e2e*` (`CONTAINER_PREFIX`), so it runs beside another Aegis install;
 - data lives in named volumes, not `./data`, so a real install's data is never
   touched, and `docker compose -p aegis-e2e ... down -v` removes everything;
 - nginx binds `127.0.0.1` only; outbound telemetry is off.
@@ -44,6 +44,7 @@ state saved by earlier ones in `e2e/artifacts/state.json`.
 | `05-companies-contacts-assets` | Create a company, a contact at it and an asset assigned to them; ticket for the contact; link the asset |
 | `06-settings-and-sweep` | AI features off by default and not advertised; page sweep for crashes, 5xx and funding wording; placeholder text reported |
 | `07-restart-persistence` | `down` (no `-v`) + `up`: rows, attachment bytes, sessions (persisted auth secret) survive; setup stays closed |
+| `07c-change-and-problem-tickets` | A technician raises a Change Request and a Problem; an end user is refused |
 
 ## Artifacts (`e2e/artifacts/`, gitignored)
 

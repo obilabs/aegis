@@ -17,6 +17,9 @@
 #   AEGIS_VERSION       = app image tag (default `local` = build from source;
 #                         set an immutable tag - a release or sha-<commit> -
 #                         to run a pre-built image. Never latest / edge.)
+#   CONTAINER_PREFIX    = container name prefix (default aegis -> aegis,
+#                         aegis-db, ...). Change it to run a second stack
+#                         on the same Docker host (use a different PORT too).
 #
 # Storage: bind mounts in ./data/ per root CLAUDE.md rule ("Volumes stored
 # in ./data/ within the project folder — never shared named volumes").
@@ -32,7 +35,7 @@ services:
   # Nginx reverse proxy (ONLY exposed service)
   nginx:
     image: nginx:1.30.4-alpine
-    container_name: aegis-nginx
+    container_name: ${CONTAINER_PREFIX:-aegis}-nginx
     ports:
       - "${BIND_HOST:-0.0.0.0}:${PORT:-8080}:80"
     volumes:
@@ -62,7 +65,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:8080}
-    container_name: aegis
+    container_name: ${CONTAINER_PREFIX:-aegis}
     expose:
       - "3000"
     environment:
@@ -154,7 +157,7 @@ services:
   # PostgreSQL database with pgvector (internal only)
   db:
     image: pgvector/pgvector:pg16
-    container_name: aegis-db
+    container_name: ${CONTAINER_PREFIX:-aegis}-db
     expose:
       - "5432"
     environment:
@@ -176,7 +179,7 @@ services:
   # Redis (internal only — for pg-boss job queue + caching)
   redis:
     image: redis:7-alpine
-    container_name: aegis-redis
+    container_name: ${CONTAINER_PREFIX:-aegis}-redis
     expose:
       - "6379"
     volumes:
@@ -195,7 +198,7 @@ services:
     # MinIO's own registry (the Docker Hub minio/* images are no longer
     # pullable). Pinned to a release tag; bump deliberately.
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: aegis-minio
+    container_name: ${CONTAINER_PREFIX:-aegis}-minio
     command: server /data --console-address ":9001"
     expose:
       - "9000"
@@ -218,7 +221,7 @@ services:
   # Auto-create default bucket on startup
   minio-init:
     image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-    container_name: aegis-minio-init
+    container_name: ${CONTAINER_PREFIX:-aegis}-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -243,7 +246,7 @@ services:
   docling:
     profiles: [docling, full]
     image: quay.io/docling-project/docling-serve:v1.32.0
-    container_name: aegis-docling
+    container_name: ${CONTAINER_PREFIX:-aegis}-docling
     expose:
       - "5001"
     environment:

@@ -643,6 +643,16 @@ export function getFeaturesByStatus(status: FeatureStatus): Feature[] {
   return Object.values(FEATURES).filter(f => f.status === status);
 }
 
+/**
+ * Unbuilt ("coming soon") features are not listed in the product unless the
+ * build sets NEXT_PUBLIC_SHOW_UPCOMING_FEATURES=true (for development).
+ */
+export const SHOW_UPCOMING_FEATURES = process.env.NEXT_PUBLIC_SHOW_UPCOMING_FEATURES === 'true'
+
+export function isListedFeature(feature: { status?: unknown }): boolean {
+  return SHOW_UPCOMING_FEATURES || feature.status !== 'coming_soon'
+}
+
 // Check if feature is available (not coming_soon or deprecated)
 export function isFeatureAvailable(featureKey: string): boolean {
   const feature = FEATURES[featureKey];

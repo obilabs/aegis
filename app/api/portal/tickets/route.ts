@@ -2,7 +2,7 @@ import { toSafeHtml } from '@/lib/article-render'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
-import { getTicketAccessFilter } from '@/lib/permissions'
+import { getTicketAccessFilter, getUserPermissions } from '@/lib/permissions'
 import { logAudit, getClientIp } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
@@ -182,10 +182,13 @@ export async function POST(request: NextRequest) {
 
     const typeName = type || 'incident'
 
-    // Role check: Change Requests and Problems are tech/admin only
+    // Role check: Change Requests and Problems are staff only. Uses the
+    // application role (ticket_access/admin_access), not the Better Auth
+    // session role, which is only ever 'user' or 'admin' and so refused every
+    // technician.
     if (typeName === 'change' || typeName === 'problem') {
-      const userRole = session.user.role
-      if (!userRole || !['admin', 'technician', 'helpdesk'].includes(userRole)) {
+      const perms = await getUserPermissions(userId)
+      if (!perms.adminAccess && perms.ticketAccess === 'own') {
         return NextResponse.json(
           { error: 'Only technicians and administrators can create this ticket type' },
           { status: 403 }
@@ -281,7 +284,9 @@ export async function POST(request: NextRequest) {
       if (scheduled_end) customFields.scheduled_end = scheduled_end
       // Override requires_approval based on change_type
       // Standard = no approval, Normal/Emergency = requires approval
-      if (change_type === 'standard') {
+      if (!ticketType) {
+        // no Change Request type configured: nothing to override
+      } else if (change_type === 'standard') {
         ticketType.requires_approval = false
       } else if (change_type === 'normal' || change_type === 'emergency') {
         ticketType.requires_approval = true
@@ -293,7 +298,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Set request_category based on type
-    const requestCategory = typeName === 'change' ? 'change' : typeName === 'problem' ? 'problem' : typeName === 'service_request' ? 'service_request' : 'incident'
+    // Values of the request_category enum ('change_request', not 'change').
+    const requestCategory = typeName === 'change' ? 'change_request' : typeName === 'problem' ? 'problem' : typeName === 'service_request' ? 'service_request' : 'incident'
 
     // Validate scheduling fields
     const resolvedActionDateType = action_date_type || 'complete_by'

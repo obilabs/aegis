@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { SHOW_UPCOMING_FEATURES } from '@/lib/features'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,7 +42,7 @@ interface EnforcementField {
   comingSoon: boolean
 }
 
-const ENFORCEMENT_FIELDS: EnforcementField[] = [
+const ALL_ENFORCEMENT_FIELDS: EnforcementField[] = [
   {
     key: 'enforce_departments',
     label: 'Departments',
@@ -92,6 +93,9 @@ const ENFORCEMENT_FIELDS: EnforcementField[] = [
     comingSoon: false,
   },
 ]
+
+// Fields whose picklist is not built yet are listed only in development builds.
+const ENFORCEMENT_FIELDS = ALL_ENFORCEMENT_FIELDS.filter(f => !f.comingSoon || SHOW_UPCOMING_FEATURES)
 
 // ---------------------------------------------------------------------------
 // Inline SVG Icons (consistent with other settings pages that use inline SVGs)
