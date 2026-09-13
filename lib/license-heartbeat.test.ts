@@ -35,11 +35,11 @@ function makeResult(overrides: Partial<LicenseResult>): LicenseResult {
     reason: 'ok',
     message: '',
     product: 'aegis',
-    plan: 'donor',
+    plan: 'community',
     features: null,
     expiresAt: null,
     // Trial lifecycle fields are part of the published LicenseResult contract;
-    // a non-trial community/donor licence sets them to their inactive defaults.
+    // a non-trial community licence sets them to their inactive defaults.
     trial: false,
     trialEndsAt: null,
     daysRemaining: null,
@@ -97,7 +97,7 @@ describe('validateLicense never throws (g3 fix)', () => {
       state: 'valid',
       reason: 'ok',
       product: 'aegis',
-      plan: 'donor',
+      plan: 'community',
       expiresAt: null,
       authoritativeAt: '2026-08-01T00:00:00.000Z',
     }
@@ -110,7 +110,7 @@ describe('validateLicense never throws (g3 fix)', () => {
     })
     expect(result.state).toBe('unknown')
     expect(result.authoritativeAt).toBe(cached.authoritativeAt)
-    expect(result.plan).toBe('donor')
+    expect(result.plan).toBe('community')
   })
 })
 
