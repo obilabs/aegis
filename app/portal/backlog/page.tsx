@@ -1,5 +1,6 @@
 'use client'
 
+import { SafeHtml } from '@/components/SafeHtml'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
@@ -490,7 +491,7 @@ export default function BacklogPage() {
                         <span className="text-xs font-medium text-slate-300">{comment.user_name}</span>
                         <span className="text-xs text-slate-500">{formatRelativeDate(comment.created_at)}</span>
                       </div>
-                      <div className="prose prose-invert prose-sm max-w-none text-slate-400" dangerouslySetInnerHTML={{ __html: comment.content }} />
+                      <SafeHtml className="prose prose-invert prose-sm max-w-none text-slate-400" html={comment.content} />
                     </div>
                   ))}
                   {comments.length === 0 && (

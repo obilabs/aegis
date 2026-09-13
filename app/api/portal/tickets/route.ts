@@ -1,3 +1,4 @@
+import { toSafeHtml } from '@/lib/article-render'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
@@ -329,7 +330,8 @@ export async function POST(request: NextRequest) {
     `, [
       orgId,
       subject,
-      description,
+      // Rich text: sanitized on write (and again at render via <SafeHtml>).
+      toSafeHtml(description),
       resolvedPriority,
       typeId,
       statusId,

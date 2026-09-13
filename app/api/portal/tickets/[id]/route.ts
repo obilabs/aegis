@@ -1,3 +1,4 @@
+import { toSafeHtml } from '@/lib/article-render'
 import { pool, query, queryOne } from '@/lib/db'
 import { logAudit, getClientIp } from '@/lib/audit'
 import { getAuthContext } from '@/lib/org'
@@ -483,7 +484,7 @@ export async function PATCH(
 
     if (body.description !== undefined) {
       updates.push(`description = $${paramIndex++}`)
-      values.push(body.description)
+      values.push(body.description === null ? null : toSafeHtml(body.description))
     }
 
     if (body.priority) {

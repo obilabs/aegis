@@ -26,6 +26,7 @@
  * Dovecot online.
  */
 
+import { toSafeHtml } from '@/lib/article-render'
 import { pool } from '@/lib/db'
 import { mergeParticipants } from '@/lib/permissions'
 import { getQueue } from '@/lib/queue'
@@ -438,6 +439,16 @@ async function applyDecision(
   }
 }
 
+/**
+ * Body stored for an inbound message: the text part when present, otherwise the
+ * HTML part passed through the app's single sanitizer (it is rendered as rich
+ * text in the ticket view).
+ */
+export function emailBodyForStorage(parsed: Pick<ParsedEmail, 'text' | 'html'>): string {
+  if (parsed.text != null) return parsed.text
+  return toSafeHtml(parsed.html)
+}
+
 async function insertNewTicket(mailbox: MailboxRow, parsed: ParsedEmail): Promise<string> {
   const cc = mergeParticipants(
     [],
@@ -454,7 +465,7 @@ async function insertNewTicket(mailbox: MailboxRow, parsed: ParsedEmail): Promis
     [
       mailbox.organization_id,
       (parsed.subject ?? '(no subject)').slice(0, 500),
-      parsed.text ?? parsed.html ?? '',
+      emailBodyForStorage(parsed),
       mailbox.default_ticket_kind,
       parsed.fromAddress,
       cc,
@@ -482,7 +493,7 @@ async function insertReply(
      RETURNING id`,
     [
       ticketId,
-      parsed.text ?? parsed.html ?? '',
+      emailBodyForStorage(parsed),
       parsed.messageId,
       mailbox.id,
     ],

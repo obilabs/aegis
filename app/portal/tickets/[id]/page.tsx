@@ -1,5 +1,6 @@
 'use client'
 
+import { SafeHtml } from '@/components/SafeHtml'
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -973,9 +974,10 @@ export default function TicketDetailPage() {
             <div className="p-4 border-b border-slate-700">
               <h2 className="text-lg font-semibold text-slate-100">Description</h2>
             </div>
-            <div
+            <SafeHtml
               className="p-4 prose prose-invert prose-sm max-w-none text-slate-300"
-              dangerouslySetInnerHTML={{ __html: ticket.description || 'No description provided.' }}
+              html={ticket.description}
+              fallback="No description provided."
             />
           </div>
 
@@ -1481,9 +1483,9 @@ export default function TicketDetailPage() {
                               {formatReplyTime(reply.created_at)}
                             </span>
                           </div>
-                          <div
+                          <SafeHtml
                             className="prose prose-invert prose-sm max-w-none text-slate-300"
-                            dangerouslySetInnerHTML={{ __html: reply.content }}
+                            html={reply.content}
                           />
                         </div>
                       </div>

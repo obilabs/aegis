@@ -1,5 +1,6 @@
 'use client'
 
+import { SafeHtml } from '@/components/SafeHtml'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, use } from 'react'
@@ -258,9 +259,9 @@ export default function KBArticlePage({ params }: { params: Promise<{ slug: stri
         </div>
 
         {/* Article Content */}
-        <div
+        <SafeHtml
           className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-p:text-slate-300 prose-a:text-brand-400 prose-strong:text-white prose-code:text-brand-300 prose-code:bg-slate-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-800 prose-pre:border prose-pre:border-slate-700"
-          dangerouslySetInnerHTML={{ __html: article.content }}
+          html={article.content}
         />
 
         {/* Training Assessment */}

@@ -1,5 +1,6 @@
 'use client'
 
+import { SafeHtml } from '@/components/SafeHtml'
 import { useState, useEffect, use, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -298,7 +299,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
               )}
               <div className="mt-6 prose prose-invert prose-sm max-w-none">
                 {doc.content ? (
-                  <div dangerouslySetInnerHTML={{ __html: doc.content }} />
+                  <SafeHtml html={doc.content} />
                 ) : (
                   <p className="text-slate-500 italic">No content yet. Click Edit to add content.</p>
                 )}
