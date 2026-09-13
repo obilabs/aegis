@@ -6,6 +6,7 @@
  * Only the SHA-256 hash is stored; the full key is shown once at creation.
  */
 
+import { createFixedWindowLimiter } from '@/lib/rate-limit'
 import { createHash, randomBytes } from 'crypto'
 import { query, queryOne } from '@/lib/db'
 
@@ -55,28 +56,10 @@ export function hashApiKey(key: string): string {
  * Returns true if the request is ALLOWED, false if rate-limited.
  */
 
-// In-memory rate limit counters: apiKeyId -> { windowStart, count }
-const rateLimitCounters = new Map<string, { windowStart: number; count: number }>()
+const apiKeyLimiter = createFixedWindowLimiter({ windowMs: 60 * 60 * 1000 })
 
 export function checkRateLimit(apiKeyId: string, limit: number): boolean {
-  if (limit <= 0) return true // 0 = unlimited
-
-  const now = Date.now()
-  const windowMs = 60 * 60 * 1000 // 1 hour
-  const entry = rateLimitCounters.get(apiKeyId)
-
-  if (!entry || now - entry.windowStart > windowMs) {
-    // Start a new window
-    rateLimitCounters.set(apiKeyId, { windowStart: now, count: 1 })
-    return true
-  }
-
-  if (entry.count >= limit) {
-    return false
-  }
-
-  entry.count += 1
-  return true
+  return apiKeyLimiter.hit(apiKeyId, limit)
 }
 
 // ---------------------------------------------------------------------------
