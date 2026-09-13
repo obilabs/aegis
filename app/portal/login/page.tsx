@@ -119,7 +119,7 @@ export default function LoginPage() {
           Portal Login
         </h2>
         <p className="mt-2 text-center text-sm text-slate-400">
-          Sign in to manage your instances
+          Sign in to your help desk
         </p>
       </div>
 

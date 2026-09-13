@@ -28,6 +28,7 @@ import {
   HomeIcon,
 } from '@heroicons/react/24/outline'
 import { MyHub } from '@/components/dashboard/MyHub'
+import { useFeature } from '@/lib/hooks/useFeatures'
 
 interface ActivityItem {
   id: string
@@ -132,6 +133,8 @@ export default function DashboardPage() {
     id: string; type: string; title: string; description: string; link?: string; linkText?: string
   }[]>([])
   const [pendingApprovals, setPendingApprovals] = useState(0)
+  // AI is off by default; only point people at the assistant when it is on.
+  const { isEnabled: aiChatEnabled } = useFeature('ai_chat')
 
   // Fetch dashboard preference + permissions first
   useEffect(() => {
@@ -618,7 +621,8 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* AI Assistant Prompt */}
+          {/* AI Assistant Prompt (only when the AI chat feature is enabled) */}
+          {aiChatEnabled && (
           <div className="bg-gradient-to-r from-brand-500/10 to-teal-500/10 rounded-lg border border-brand-500/30 p-6">
             <div className="flex items-start gap-4">
               <div className="p-3 bg-brand-500/20 rounded-xl">
@@ -639,6 +643,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Activity Feed Sidebar - Collapsible */}

@@ -11,11 +11,11 @@ interface QuickActionsProps {
   aiEnabled?: boolean
 }
 
-export function QuickActions({ aiEnabled = true }: QuickActionsProps) {
+export function QuickActions({ aiEnabled = false }: QuickActionsProps) {
   return (
     <div className="flex flex-wrap gap-3">
       <Link
-        href="/portal/request"
+        href="/portal/tickets/new"
         className="flex items-center gap-2 px-4 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-500 transition-colors text-sm font-medium"
       >
         <PlusIcon className="h-4 w-4" />
