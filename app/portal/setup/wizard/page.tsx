@@ -567,8 +567,8 @@ export default function SetupWizardPage() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-200">Telemetry &amp; Privacy</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Aegis can send anonymized usage data to help us improve the
-                  platform and validate your license. You decide what gets
+                  Aegis can send anonymized usage data to help us improve it.
+                  You decide what gets
                   sent — including nothing at all. Change anytime in Settings &gt;
                   Telemetry &amp; Privacy, or set <code className="text-slate-300">TELEMETRY_ENABLED=false</code> in
                   your container env (env beats UI).
@@ -596,7 +596,7 @@ export default function SetupWizardPage() {
                       Disable all telemetry
                     </span>
                     <span className="ml-2 text-xs text-slate-500">
-                      (no liveness ping, no install ping, no license re-validation — nothing)
+                      (no install ping, no liveness ping, no instance check-in — nothing)
                     </span>
                   </div>
                   <div className={`w-8 h-5 rounded-full transition-colors ${
@@ -608,8 +608,8 @@ export default function SetupWizardPage() {
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Your license continues to work locally. It just isn&apos;t
-                  re-validated with our control plane until you re-enable.
+                  Aegis works exactly the same with everything off; nothing
+                  is sent until you turn something back on.
                 </p>
               </button>
 
@@ -636,8 +636,7 @@ export default function SetupWizardPage() {
                 <p className="mt-1 text-xs text-slate-500">
                   A random ID and the version — no usage, no PII. The daily ping is
                   how a self-hosted install stays counted as active; without it,
-                  community installs drop off after 30 days. A license key, if you
-                  have one, lets you claim this instance for support later.
+                  an install drops out of the count after 30 days.
                 </p>
               </div>
 

@@ -297,22 +297,18 @@ export default function SettingsPage() {
       {/* System Info */}
       <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-4">
         <h3 className="text-sm font-medium text-slate-300 mb-3">System Information</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
           <div>
             <p className="text-slate-500">Version</p>
-            <p className="text-slate-200">1.0.0</p>
+            <p className="text-slate-200">{process.env.NEXT_PUBLIC_APP_VERSION}</p>
           </div>
           <div>
-            <p className="text-slate-500">License</p>
-            <p className="text-brand-400">Community</p>
+            <p className="text-slate-500">Source</p>
+            <p className="text-brand-400">Open source (AGPL-3.0)</p>
           </div>
           <div>
             <p className="text-slate-500">Database</p>
             <p className="text-slate-200">PostgreSQL 16</p>
-          </div>
-          <div>
-            <p className="text-slate-500">Instance ID</p>
-            <p className="text-slate-200 font-mono text-xs">aegis-local-dev</p>
           </div>
         </div>
       </div>

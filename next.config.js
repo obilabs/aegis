@@ -29,6 +29,12 @@ const nextConfig = {
 
   serverExternalPackages: ['pg'],
 
+  // Shown in the portal (sidebar, Settings > System information). One source:
+  // package.json.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: require('./package.json').version,
+  },
+
   // CORS headers for external API routes (/api/ai/* and /api/v1/*)
   async headers() {
     // If no origins configured, skip CORS headers entirely

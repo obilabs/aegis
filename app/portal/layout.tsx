@@ -787,7 +787,7 @@ function PortalShell({
             ) : (
               <div className="px-3 py-2 rounded-lg bg-slate-800/50">
                 <p className="text-xs text-slate-500">Aegis ITSM</p>
-                <p className="text-xs text-slate-600 mt-0.5">v1.0.0 • Community</p>
+                <p className="text-xs text-slate-600 mt-0.5">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
               </div>
             )}
           </div>
