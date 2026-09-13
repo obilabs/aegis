@@ -43,8 +43,8 @@ state saved by earlier ones in `e2e/artifacts/state.json`.
 | `04-knowledge-base` | Publish a public article; read it signed out; "was this helpful?" feedback stored once |
 | `05-companies-contacts-assets` | Create a company, a contact at it and an asset assigned to them; ticket for the contact; link the asset |
 | `06-settings-and-sweep` | AI features off by default and not advertised; page sweep for crashes, 5xx and funding wording; placeholder text reported |
-| `07c-change-and-problem-tickets` | A technician raises a Change Request and a Problem; an end user is refused |
 | `07-restart-persistence` | `down` (no `-v`) + `up`: rows, attachment bytes, sessions (persisted auth secret) survive; setup stays closed |
+| `07c-change-and-problem-tickets` | A technician raises a Change Request and a Problem; an end user is refused |
 
 ## Artifacts (`e2e/artifacts/`, gitignored)
 
