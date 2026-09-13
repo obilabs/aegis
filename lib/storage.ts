@@ -177,3 +177,22 @@ export function validatePublicUpload(
   }
   return { valid: true }
 }
+
+/**
+ * Build a storage key for a ticket attachment.
+ * Path: {orgId}/tickets/{ticketId}/{timestamp}-{filename}
+ */
+export function buildTicketKey(orgId: string, ticketId: string, filename: string): string {
+  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+  return `${orgId}/tickets/${ticketId}/${Date.now()}-${safe}`
+}
+
+/**
+ * Content-Disposition for a download: an ASCII fallback plus the RFC 5987
+ * UTF-8 form, so a name with quotes or non-ASCII characters can neither break
+ * the header nor get mangled.
+ */
+export function attachmentDisposition(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+}

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense, useCallback } from 'react'
 import { LinkItems, type LinkedItem } from '@/components/LinkItems'
 import { TicketSearch } from '@/components/TicketSearch'
+import { Button } from '@/components/ui/Button'
 
 interface TicketTypeConfig {
   id: string
@@ -172,6 +173,13 @@ function NewTicketForm() {
   // Linked items for the LinkItems component (pre-ticket-creation, managed locally)
   const [linkedItems, setLinkedItems] = useState<LinkedItem[]>([])
   const [userAssets, setUserAssets] = useState<UserAsset[]>([])
+  // Files chosen before the ticket exists; uploaded right after it is created.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const addPendingFiles = (files: FileList | null) => {
+    if (!files) return
+    const incoming = Array.from(files)
+    setPendingFiles(prev => [...prev, ...incoming.filter(f => !prev.some(p => p.name === f.name && p.size === f.size))])
+  }
 
   const meta = TYPE_META[ticketType] || TYPE_META.incident
   const currentType = types.find(t => t.name.toLowerCase().replace(/\s+/g, '_').replace('_request', '') === ticketType
@@ -343,6 +351,16 @@ function NewTicketForm() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ targetType: item.entityType, targetId: item.id }),
           }).catch(() => {})
+        }
+      }
+
+      // Upload chosen files now that the ticket exists. A failed upload does not
+      // lose the ticket: the detail page lists what arrived and can take more.
+      if (pendingFiles.length > 0 && data.id) {
+        for (const file of pendingFiles) {
+          const form = new FormData()
+          form.append('file', file)
+          await fetch(`/api/portal/tickets/${data.id}/attachments`, { method: 'POST', body: form }).catch(() => {})
         }
       }
 
@@ -885,13 +903,41 @@ function NewTicketForm() {
           <label className="block text-sm font-medium text-slate-300 mb-3">
             Attachments
           </label>
-          <div className="border-2 border-dashed border-slate-700 rounded-lg p-8 text-center hover:border-slate-600 transition-colors cursor-pointer">
+          <label
+            className="block border-2 border-dashed border-slate-700 rounded-lg p-8 text-center hover:border-slate-600 transition-colors cursor-pointer"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); addPendingFiles(e.dataTransfer.files) }}
+          >
             <UploadIcon className="h-10 w-10 text-slate-600 mx-auto mb-3" />
             <p className="text-sm text-slate-400">
               Drag and drop files here, or <span className="text-brand-400">browse</span>
             </p>
-            <p className="text-xs text-slate-600 mt-1">PNG, JPG, PDF up to 10MB</p>
-          </div>
+            <p className="text-xs text-slate-600 mt-1">Images, PDFs, Office documents, text and zip files</p>
+            <input
+              type="file"
+              multiple
+              className="sr-only"
+              data-testid="new-ticket-attach-input"
+              onChange={(e) => { addPendingFiles(e.target.files); e.target.value = '' }}
+            />
+          </label>
+          {pendingFiles.length > 0 && (
+            <ul className="mt-3 space-y-1" data-testid="new-ticket-pending-files">
+              {pendingFiles.map((f) => (
+                <li key={`${f.name}-${f.size}`} className="flex items-center justify-between text-sm text-slate-300">
+                  <span className="truncate">{f.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={() => setPendingFiles(prev => prev.filter(p => p !== f))}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Error */}
