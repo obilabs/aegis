@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Pool } from 'pg'
+import { ensureSetupToken } from '@/lib/first-run-token'
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -17,6 +18,12 @@ export async function GET() {
       orgCount = parseInt(orgResult.rows[0].count, 10)
     } catch {
       // Table may not exist yet
+    }
+
+    // Setup still open → make sure the one-time setup token exists (and has
+    // been logged). The token itself is never returned.
+    if (orgCount === 0) {
+      try { ensureSetupToken() } catch (err) { console.error('[setup] token init failed:', err) }
     }
 
     return NextResponse.json({

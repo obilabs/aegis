@@ -19,6 +19,7 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import { getPresetsForProfile } from '@/lib/features'
+import { SETUP_TOKEN_HEADER, SETUP_TOKEN_HINT, SETUP_TOKEN_STORAGE_KEY } from '@/lib/first-run-client'
 
 interface SetupTemplate {
   id: string
@@ -81,6 +82,12 @@ export default function SetupWizardPage() {
   const [templates, setTemplates] = useState<SetupTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [recommendedSources, setRecommendedSources] = useState<Record<string, string[]>>({})
+  // One-time setup token (entered on /portal/setup, or here if the admin was
+  // seeded headlessly / the tab was reopened).
+  const [setupToken, setSetupToken] = useState('')
+  useEffect(() => {
+    try { setSetupToken(sessionStorage.getItem(SETUP_TOKEN_STORAGE_KEY) || '') } catch { /* private mode */ }
+  }, [])
 
   // Form data
   const [formData, setFormData] = useState({
@@ -189,11 +196,12 @@ export default function SetupWizardPage() {
     try {
       const res = await fetch('/api/setup/complete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', [SETUP_TOKEN_HEADER]: setupToken.trim() },
         body: JSON.stringify(formData),
       })
 
       if (res.ok || res.status === 409) {
+        try { sessionStorage.removeItem(SETUP_TOKEN_STORAGE_KEY) } catch { /* ignore */ }
         // Success or org already exists — hard navigate to dashboard
         window.location.href = '/portal/dashboard'
         return
@@ -703,6 +711,27 @@ export default function SetupWizardPage() {
                 </code>
               </button>
               </div> {/* close tier-toggles dimmer wrapper */}
+            </div>
+
+            <div className="text-left">
+              <label htmlFor="setupToken" className="block text-sm font-medium text-slate-300">
+                Setup token
+              </label>
+              <input
+                id="setupToken"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={setupToken}
+                onChange={(e) => {
+                  setSetupToken(e.target.value)
+                  try { sessionStorage.setItem(SETUP_TOKEN_STORAGE_KEY, e.target.value.trim()) } catch { /* ignore */ }
+                }}
+                className="mt-1 block w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 font-mono sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Printed in the server log: <code className="text-slate-400">{SETUP_TOKEN_HINT}</code>
+              </p>
             </div>
 
             {!sessionLoading && !session && (

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { toSafeHtml } from '@/lib/article-render'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId, getUserId } from '@/lib/org'
@@ -118,6 +119,8 @@ export async function PUT(
   }
 
   const d = parsed.data
+  // Rich text: sanitized on write (and again at render via <SafeHtml>).
+  if (d.content) d.content = toSafeHtml(d.content)
   const sets: string[] = []
   const vals: any[] = []
   let idx = 1

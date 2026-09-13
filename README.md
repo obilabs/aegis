@@ -174,6 +174,20 @@ seeding the admin does NOT bypass it.
 | `ADMIN_PASSWORD` | If set → seed admin headlessly; if blank → operator creates at `/portal/setup` | *(blank)* |
 | `ADMIN_NAME` | Display name | `Aegis Administrator` |
 
+### First-run setup token
+
+Until setup is complete, claiming a fresh instance requires a one-time **setup
+token**, so that nobody else who reaches the page first can take it over. On
+startup Aegis prints it to the log and saves it to `./data/secrets/setup-token`:
+
+```bash
+docker compose logs aegis | grep 'setup token'
+```
+
+Enter it on `/portal/setup` (and in the wizard if asked). It is deleted when
+setup completes. To choose it yourself — for example in a scripted deploy — set
+`AEGIS_SETUP_TOKEN` before first launch.
+
 ### Optional
 
 | Variable | Description | Default |

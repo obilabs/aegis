@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signUp } from '@/lib/auth-client'
 import { Shield } from 'lucide-react'
+import { SETUP_TOKEN_STORAGE_KEY, SETUP_TOKEN_HEADER, SETUP_TOKEN_HINT } from '@/lib/first-run-client'
 
 export default function SetupPage() {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function SetupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [setupToken, setSetupToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
@@ -50,10 +52,14 @@ export default function SetupPage() {
     setLoading(true)
 
     try {
+      const token = setupToken.trim()
+      try { sessionStorage.setItem(SETUP_TOKEN_STORAGE_KEY, token) } catch { /* private mode */ }
+
       const result = await signUp.email({
         email,
         password,
         name,
+        fetchOptions: { headers: { [SETUP_TOKEN_HEADER]: token } },
       })
 
       if (result.error) {
@@ -67,7 +73,7 @@ export default function SetupPage() {
         try {
           const adminResult = await fetch('/api/setup/set-admin', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', [SETUP_TOKEN_HEADER]: token },
             body: JSON.stringify({ userId: result.data.user.id }),
           })
 
@@ -137,6 +143,28 @@ export default function SetupPage() {
                 {error}
               </div>
             )}
+
+            <div>
+              <label htmlFor="setupToken" className="block text-sm font-medium text-slate-300">
+                Setup token
+              </label>
+              <div className="mt-1">
+                <input
+                  id="setupToken"
+                  name="setupToken"
+                  type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
+                  value={setupToken}
+                  onChange={(e) => setSetupToken(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 sm:text-sm"
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Printed in the server log: <code className="text-slate-400">{SETUP_TOKEN_HINT}</code>
+              </p>
+            </div>
 
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-slate-300">

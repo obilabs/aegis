@@ -1,3 +1,4 @@
+import { toSafeHtml } from '@/lib/article-render'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
@@ -125,6 +126,8 @@ export async function POST(request: NextRequest) {
   }
 
   const d = parsed.data
+  // Rich text: sanitized on write (and again at render via <SafeHtml>).
+  if (d.content) d.content = toSafeHtml(d.content)
 
   try {
     const userId = await getUserId(session.user.email)

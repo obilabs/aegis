@@ -478,6 +478,16 @@ There is no `ChangeMe123!` fallback — leaving `ADMIN_PASSWORD` empty
 means "I'll set it in the browser," not "seed me an insecure default."
 The pre-2026-06-14 default was a security hazard and is gone.
 
+**First-run setup token (added 2026-09-13).** While no organization exists,
+claiming the instance needs a one-time token (`lib/first-run-token.ts`):
+generated at startup by `instrumentation.ts` (or on the first
+`/api/setup/status` call), logged as `setup token: …`, saved to
+`${AEGIS_SECRETS_DIR}/setup-token`, pre-settable via `AEGIS_SETUP_TOKEN`.
+The first `/sign-up/email` (hooks.before, zero users), `/api/setup/set-admin`
+and `/api/setup/complete` require it in the `x-aegis-setup-token` header
+(constant-time compare); `complete` deletes it. Don't add a first-run
+endpoint that skips `requireSetupToken()`.
+
 **Don't:**
 - Reintroduce a default password fallback. Empty MUST mean "skip seed."
 - Wire ADMIN_PASSWORD into any other surface — it's purely a deploy-
@@ -617,6 +627,8 @@ pattern cannot recur.
 - Put internal portal routes under `/api/v1/` (they stay at `/api/portal/` etc.)
 - Assume `lib/ai/` directory exists (it does not)
 - Create dependencies to aegis-mtp or other apps
+- Use `dangerouslySetInnerHTML` or assign `innerHTML` directly — render rich text with `<SafeHtml>` (`components/SafeHtml.tsx`), which applies `toSafeHtml` from `lib/article-render.ts`; `lib/safe-html-usage.test.ts` enforces it
+- Let account creation carry an admin role, or let a non-admin grant/change admin access — the policy is `lib/role-grants.ts` (Principle 1), covered by `app/api/portal/users/role-grants.test.ts`
 
 ## KB seeding is part of every user-facing feature (added 2026-07-18)
 

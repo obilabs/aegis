@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { getOrgId, getAuthContext } from '@/lib/org'
 import { hasCapabilityOrAdmin } from '@/lib/permissions'
+import { decideRoleOnCreate, lookupRole } from '@/lib/role-grants'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { randomBytes } from 'node:crypto'
@@ -108,6 +109,21 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsed.data
+
+    // Principle 1 (lib/role-grants.ts): account creation never carries an
+    // administrator role, whoever the caller is. Admin access is granted
+    // afterwards by an existing admin through PATCH /api/portal/users/[id],
+    // which is audited.
+    if (data.role_id) {
+      const role = await lookupRole(data.role_id, orgId)
+      if (!role) {
+        return NextResponse.json({ error: 'Role not found' }, { status: 400 })
+      }
+      const decision = decideRoleOnCreate({ roleIsAdmin: role.adminAccess })
+      if (!decision.ok) {
+        return NextResponse.json({ error: decision.error }, { status: decision.status })
+      }
+    }
 
     // Check email isn't already taken
     const existingUser = await pool.query(

@@ -1,5 +1,6 @@
 'use client'
 
+import { toSafeHtml } from '@/lib/article-render'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { 
   Bold, Italic, Underline, Strikethrough, 
@@ -87,7 +88,7 @@ export function RichTextEditor({
   // Sync value to editor
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value
+      editorRef.current.innerHTML = toSafeHtml(value)
     }
   }, [value])
 
@@ -164,9 +165,9 @@ export function RichTextEditor({
       if (data.result) {
         // If text was selected, replace selection; otherwise replace all content
         if (selectedText) {
-          execCommand('insertHTML', data.result)
+          execCommand('insertHTML', toSafeHtml(data.result))
         } else if (editorRef.current) {
-          editorRef.current.innerHTML = data.result
+          editorRef.current.innerHTML = toSafeHtml(data.result)
           handleInput()
         }
       }

@@ -1,5 +1,6 @@
 'use client'
 
+import { SafeHtml } from '@/components/SafeHtml'
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -208,7 +209,7 @@ export default function PublicArticlePage() {
         </header>
 
         {/* Article Body */}
-        <div 
+        <SafeHtml 
           className="prose prose-invert prose-emerald max-w-none
             prose-headings:text-slate-100 
             prose-p:text-slate-300 
@@ -219,7 +220,7 @@ export default function PublicArticlePage() {
             prose-blockquote:border-brand-500 prose-blockquote:text-slate-400
             prose-li:text-slate-300
             prose-hr:border-slate-700"
-          dangerouslySetInnerHTML={{ __html: article.content }}
+          html={article.content}
         />
 
         {/* Feedback Section */}

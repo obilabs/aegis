@@ -1,3 +1,4 @@
+import { toSafeHtml } from '@/lib/article-render'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
@@ -33,7 +34,7 @@ export async function POST(
       INSERT INTO backlog_comments (backlog_item_id, user_id, content)
       VALUES ($1, $2, $3)
       RETURNING id, content, created_at
-    `, [id, userId, body.content.trim()])
+    `, [id, userId, toSafeHtml(body.content.trim())])
 
     const comment = result.rows[0]
     comment.user_name = session.user.name || session.user.email

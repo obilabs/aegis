@@ -1,3 +1,4 @@
+import { toSafeHtml } from '@/lib/article-render'
 import { pool } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
@@ -48,7 +49,7 @@ export async function POST(
       `INSERT INTO ticket_replies (ticket_id, content, is_internal, user_id)
        VALUES ($1, $2, $3, $4)
        RETURNING id, content, is_internal, created_at`,
-      [ticketId, content.trim(), is_internal || false, itsmUser?.id || null]
+      [ticketId, toSafeHtml(content.trim()), is_internal || false, itsmUser?.id || null]
     )
 
     const reply = replyResult.rows[0]

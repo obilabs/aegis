@@ -8,6 +8,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
+import { getClientIp } from '@/lib/audit'
+import { createFixedWindowLimiter } from '@/lib/rate-limit'
+import { z } from 'zod'
+
+// Unauthenticated endpoint: bound body size and per-IP request rate.
+const FEEDBACK_LIMIT_PER_HOUR = 20
+const feedbackLimiter = createFixedWindowLimiter({ windowMs: 60 * 60 * 1000 })
+
+const feedbackSchema = z.object({
+  is_helpful: z.boolean(),
+  feedback_text: z.string().trim().max(2000).optional().nullable(),
+  feedback_category: z.string().trim().max(50).optional().nullable(),
+})
 
 export async function POST(
   request: NextRequest,
@@ -15,8 +28,25 @@ export async function POST(
 ) {
   try {
     const { slug } = await params
-    const body = await request.json()
-    const { is_helpful, feedback_text, feedback_category } = body
+
+    // nginx sets X-Real-IP from the socket address, so prefer it.
+    const ip = getClientIp(request.headers) || 'unknown'
+    if (!feedbackLimiter.hit(`kb-feedback:${ip}`, FEEDBACK_LIMIT_PER_HOUR)) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': '3600' } }
+      )
+    }
+
+    if (slug.length > 255) {
+      return NextResponse.json({ error: 'Article not found' }, { status: 404 })
+    }
+
+    const parsed = feedbackSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid feedback' }, { status: 400 })
+    }
+    const { is_helpful, feedback_text, feedback_category } = parsed.data
 
     let orgId: string
     try {
@@ -44,10 +74,7 @@ export async function POST(
     const articleId = articleResult.rows[0].id
 
     // Get client info
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 
-               request.headers.get('x-real-ip') || 
-               'unknown'
-    const userAgent = request.headers.get('user-agent') || ''
+    const userAgent = (request.headers.get('user-agent') || '').slice(0, 500)
 
     // Generate a session ID for anonymous tracking (based on IP + user agent hash)
     const sessionId = Buffer.from(`${ip}-${userAgent}`).toString('base64').slice(0, 32)
