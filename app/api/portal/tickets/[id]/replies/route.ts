@@ -1,6 +1,8 @@
 import { toSafeHtml } from '@/lib/article-render'
 import { pool } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
+import { getTicketAccessFilter, getUserPermissions } from '@/lib/permissions'
+import { decideReply } from '@/lib/ticket-edit-policy'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildOutboundHeaders } from '@/lib/email/outbound-headers'
 import { resolveSigningKeysFromEnv } from '@/lib/email/signing'
@@ -21,15 +23,28 @@ export async function POST(
       return NextResponse.json({ error: 'Content is required' }, { status: 400 })
     }
 
-    // Verify ticket exists and belongs to this org
+    // Verify the ticket exists in this org AND is inside the caller's
+    // ticket_access scope (same scoping as the ticket read); internal notes
+    // are staff-only (lib/ticket-edit-policy.ts).
+    const perms = await getUserPermissions(userId)
+    const access = await getTicketAccessFilter(userId, orgId, 't', 3)
     const ticketResult = await pool.query(
       `SELECT t.id, t.organization_id, ts.name as status_name, ts.is_default, ts.base_status, t.status_id
        FROM tickets t
        JOIN ticket_statuses ts ON t.status_id = ts.id
-       WHERE t.id = $1 AND t.organization_id = $2`,
-      [ticketId, orgId]
+       WHERE t.id = $1 AND t.organization_id = $2 ${perms.adminAccess ? '' : access.clause}`,
+      perms.adminAccess ? [ticketId, orgId] : [ticketId, orgId, ...access.params]
     )
 
+    const decision = decideReply({
+      adminAccess: perms.adminAccess,
+      ticketAccess: perms.ticketAccess,
+      inScope: ticketResult.rows.length > 0,
+      isInternal: is_internal === true,
+    })
+    if (!decision.ok) {
+      return NextResponse.json({ error: decision.error }, { status: decision.status })
+    }
     if (ticketResult.rows.length === 0) {
       return NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
     }
@@ -54,8 +69,10 @@ export async function POST(
 
     const reply = replyResult.rows[0]
 
-    // Auto-assign ticket to replier if unassigned and reply is not internal
-    if (itsmUser && !is_internal) {
+    // Auto-assign ticket to a STAFF replier if unassigned and reply is not
+    // internal (a requester replying to their own ticket is not the assignee).
+    const replierIsStaff = perms.adminAccess || perms.ticketAccess !== 'own'
+    if (itsmUser && replierIsStaff && !is_internal) {
       const assignCheck = await pool.query(
         `SELECT assigned_to FROM tickets WHERE id = $1`,
         [ticketId]
@@ -80,7 +97,7 @@ export async function POST(
     }
 
     // New → Open auto-transition: if ticket is in "New" status and replier is staff
-    if (ticket.status_name === 'New' && ticket.is_default && itsmUser) {
+    if (ticket.status_name === 'New' && ticket.is_default && itsmUser && replierIsStaff) {
       const openStatus = await pool.query(
         `SELECT id FROM ticket_statuses
          WHERE organization_id = $1 AND name = 'Open'

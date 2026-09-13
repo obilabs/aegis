@@ -94,15 +94,15 @@ One instance per organization; all data stays on your infrastructure.
 
 | Module | Description |
 |--------|-------------|
-| **Tickets** | Incidents, requests, changes, problems; custom statuses; SLA clock with pause/resume; status history |
-| **Assets** | Hardware/software inventory, models, lifecycle tracking |
+| **Tickets** | Incidents, requests, changes, problems; custom statuses; SLA clock with pause/resume; status history; file attachments |
+| **Assets** | Hardware/software inventory linked to people, companies and tickets |
 | **Contacts** | People, companies, locations, departments |
 | **Knowledge Base** | Articles with categories, search, public/internal visibility |
 | **Policies & training** | Policy articles with acknowledgment tracking; training articles with completion records |
 | **Credentials** | AES-256-GCM encrypted password vault |
 | **Audit log** | Append-only record of sensitive actions (cannot be disabled) |
 | **Operations** | Onboarding/offboarding workflows and checklists |
-| **Services** | Service catalog and access requests |
+| **Services** | Service catalog and service requests |
 
 AI features are optional and **off by default**. They do nothing until an
 administrator enables them and configures a provider key (Gemini, OpenAI, or a
@@ -118,13 +118,13 @@ Soon), not an availability gate.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Ticket Management | Stable | Incidents, requests, tasks, custom statuses |
+| Ticket Management | Stable | Incidents, requests, tasks, custom statuses, file attachments |
 | Contact Management | Stable | People, companies, departments, job titles |
 | Authentication | Stable | Email/password, Google sign-in, 2FA |
 | Knowledge Base | Stable | Articles, categories, search, policies, training |
-| Asset Management | Stable | Hardware/software inventory, lifecycle tracking |
+| Asset Management | Beta | Hardware/software inventory: add and view assets, assign to a person or company, link to tickets. Editing an asset in the UI is not built yet |
 | Credential Vault | Stable | Encrypted password storage |
-| Company Management | Stable | Companies, locations, org hierarchy |
+| Company Management | Stable | Companies and locations (org chart not built yet) |
 | Audit Log | Stable | Append-only trail of sensitive actions |
 | Dashboard | Stable | Ops dashboard + My Hub with role-aware switching |
 | API Access | Stable | REST API (`/api/v1`) with scoped keys |
@@ -132,7 +132,7 @@ Soon), not an availability gate.
 | SLA Management | Beta | Response/resolution targets, pause/resume |
 | Custom Statuses | Beta | Map custom names to open/pending/closed |
 | Vendor Management | Beta | Vendors, contracts, support contacts |
-| Service Catalog | Beta | Services, costs, access request workflows |
+| Service Catalog | Beta | Catalog items and service requests with approvals |
 | Onboarding/Offboarding | Beta | Structured employee lifecycle workflows |
 | Policies & Procedures | Beta | Policy articles with acknowledgment tracking |
 | Provider Access | Beta | Grant scoped, audited, revocable access to an external MSP/partner. This is the organization's side — it controls who sees its data. |

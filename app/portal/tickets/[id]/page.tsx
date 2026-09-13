@@ -378,6 +378,22 @@ function formatDuration(seconds: number): string {
   return `${m}m`
 }
 
+interface TicketAttachment {
+  id: string
+  file_name: string
+  file_type: string | null
+  file_size: number | string | null
+  created_at: string
+  uploaded_by_name: string | null
+}
+
+function formatFileSize(bytes: number | string | null) {
+  const n = Number(bytes || 0)
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function formatRelativeDate(dateString: string) {
   const date = new Date(dateString)
   const now = new Date()
@@ -406,6 +422,10 @@ export default function TicketDetailPage() {
   const [replyContent, setReplyContent] = useState('')
   const [replyType, setReplyType] = useState<'reply' | 'internal_note'>('reply')
   const [submitting, setSubmitting] = useState(false)
+  // Ticket attachments (stored in object storage, listed from ticket_attachments)
+  const [attachments, setAttachments] = useState<TicketAttachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [statuses, setStatuses] = useState<{id: string, name: string, color: string, base_status?: string}[]>([])
   // Resolution modal state
@@ -445,9 +465,16 @@ export default function TicketDetailPage() {
   const [editCategories, setEditCategories] = useState<{id: string, name: string, parent_id?: string | null}[]>([])
   const [editUsers, setEditUsers] = useState<{id: string, name: string}[]>([])
   const [editSaving, setEditSaving] = useState(false)
+  // Shown when a status change or edit is refused, instead of pretending it worked.
+  const [actionError, setActionError] = useState('')
+  const readError = async (res: Response, fallback: string) => {
+    const data = await res.json().catch(() => ({}))
+    return (data && typeof data.error === 'string' && data.error) || `${fallback} (${res.status})`
+  }
 
   useEffect(() => {
     fetchTicketData()
+    fetchAttachments()
     fetchTasks()
     fetchTemplates()
     fetchQueueContext()
@@ -492,6 +519,39 @@ export default function TicketDetailPage() {
         setNextTicketId(allTickets[0].id)
       }
     }
+  }
+
+  const fetchAttachments = async () => {
+    try {
+      const res = await fetch(`/api/portal/tickets/${params.id}/attachments`)
+      if (res.ok) {
+        const data = await res.json()
+        setAttachments(data.attachments || [])
+      }
+    } catch { /* list stays as-is */ }
+  }
+
+  const handleAttachFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    setUploadError('')
+    const failed: string[] = []
+    for (const file of Array.from(files)) {
+      const form = new FormData()
+      form.append('file', file)
+      try {
+        const res = await fetch(`/api/portal/tickets/${params.id}/attachments`, { method: 'POST', body: form })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          failed.push(`${file.name}: ${data.error || `upload failed (${res.status})`}`)
+        }
+      } catch {
+        failed.push(`${file.name}: upload failed`)
+      }
+    }
+    if (failed.length) setUploadError(failed.join('; '))
+    await fetchAttachments()
+    setUploading(false)
   }
 
   const fetchTicketData = async () => {
@@ -558,11 +618,16 @@ export default function TicketDetailPage() {
     }
 
     try {
-      await fetch(`/api/portal/tickets/${params.id}`, {
+      setActionError('')
+      const res = await fetch(`/api/portal/tickets/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status_id: statusId }),
       })
+      if (!res.ok) {
+        setActionError(await readError(res, 'Could not change the status'))
+        return
+      }
       setTicket({ ...ticket, status: statusName })
     } catch (error) {
       console.error('Error updating status:', error)
@@ -594,11 +659,16 @@ export default function TicketDetailPage() {
         if (resolutionData.resolution_category) body.resolution_category = resolutionData.resolution_category
       }
 
-      await fetch(`/api/portal/tickets/${params.id}`, {
+      setActionError('')
+      const res = await fetch(`/api/portal/tickets/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      if (!res.ok) {
+        setActionError(await readError(res, 'Could not resolve the ticket'))
+        return
+      }
 
       setTicket({
         ...ticket,
@@ -793,8 +863,12 @@ export default function TicketDetailPage() {
         body: JSON.stringify(body),
       })
       if (res.ok) {
+        setActionError('')
         setShowEditModal(false)
         fetchTicketData() // Refresh to pick up changes
+      } else {
+        setActionError(await readError(res, 'Could not save the changes'))
+        setShowEditModal(false)
       }
     } catch (error) {
       console.error('Error updating ticket:', error)
@@ -845,6 +919,12 @@ export default function TicketDetailPage() {
 
   return (
     <div className="space-y-6">
+      {actionError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400" role="alert" data-testid="ticket-action-error">
+          {actionError}
+        </div>
+      )}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-400">
         <Link href="/portal/tickets" className="hover:text-brand-400 flex items-center gap-1">
@@ -1534,10 +1614,18 @@ export default function TicketDetailPage() {
                 aiContext={`Ticket: ${ticket.subject}\nDescription: ${ticket.description}`}
               />
               <div className="flex items-center justify-between mt-4">
-                <button className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200">
+                <label className={`flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 ${uploading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}>
                   <PaperClipIcon className="h-4 w-4" />
-                  Attach files
-                </button>
+                  {uploading ? 'Uploading...' : 'Attach files'}
+                  <input
+                    type="file"
+                    multiple
+                    className="sr-only"
+                    disabled={uploading}
+                    data-testid="ticket-attach-input"
+                    onChange={(e) => { handleAttachFiles(e.target.files); e.target.value = '' }}
+                  />
+                </label>
                 <button
                   onClick={handleSubmitReply}
                   disabled={!replyContent.trim() || submitting}
@@ -1551,6 +1639,35 @@ export default function TicketDetailPage() {
                   {replyType === 'reply' ? 'Send Reply' : 'Add Note'}
                 </button>
               </div>
+              {uploadError && (
+                <p className="mt-3 text-sm text-red-400" role="alert">{uploadError}</p>
+              )}
+              {attachments.length > 0 && (
+                <div className="mt-4 border-t border-slate-700 pt-4" data-testid="ticket-attachments">
+                  <h3 className="text-xs text-slate-500 uppercase tracking-wider mb-2">
+                    Attachments ({attachments.length})
+                  </h3>
+                  <ul className="space-y-1">
+                    {attachments.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 text-sm">
+                        <a
+                          href={`/api/portal/tickets/${params.id}/attachments/${a.id}`}
+                          className="flex items-center gap-2 min-w-0 text-brand-400 hover:underline"
+                          download
+                        >
+                          <PaperClipIcon className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">{a.file_name}</span>
+                        </a>
+                        <span className="flex-shrink-0 text-xs text-slate-500">
+                          {formatFileSize(a.file_size)}
+                          {a.uploaded_by_name ? ` · ${a.uploaded_by_name}` : ''}
+                          {' · '}{formatRelativeDate(a.created_at)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>

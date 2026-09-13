@@ -1,16 +1,4 @@
 {
-  "app/portal/access/bulk/page.tsx": {
-    "rawButton": 10,
-    "adhocPill": 4
-  },
-  "app/portal/access/new/page.tsx": {
-    "rawButton": 14,
-    "adhocPill": 5
-  },
-  "app/portal/access/page.tsx": {
-    "rawButton": 7,
-    "adhocPill": 2
-  },
   "app/portal/account/api-keys/page.tsx": {
     "rawButton": 6,
     "adhocPill": 2
@@ -26,10 +14,6 @@
   "app/portal/admin/contacts/trash/page.tsx": {
     "rawButton": 7,
     "adhocPill": 0
-  },
-  "app/portal/assets/onboarding/page.tsx": {
-    "rawButton": 10,
-    "adhocPill": 1
   },
   "app/portal/assets/page.tsx": {
     "rawButton": 2,
@@ -135,16 +119,8 @@
     "rawButton": 10,
     "adhocPill": 3
   },
-  "app/portal/people/locations/page.tsx": {
-    "rawButton": 6,
-    "adhocPill": 0
-  },
-  "app/portal/people/org-chart/page.tsx": {
-    "rawButton": 10,
-    "adhocPill": 0
-  },
   "app/portal/policies/page.tsx": {
-    "rawButton": 1,
+    "rawButton": 0,
     "adhocPill": 2
   },
   "app/portal/providers/page.tsx": {
@@ -157,10 +133,6 @@
   },
   "app/portal/register/page.tsx": {
     "rawButton": 1,
-    "adhocPill": 0
-  },
-  "app/portal/request/hardware/page.tsx": {
-    "rawButton": 7,
     "adhocPill": 0
   },
   "app/portal/requests/approvals/page.tsx": {
@@ -190,14 +162,6 @@
   "app/portal/reset-password/page.tsx": {
     "rawButton": 3,
     "adhocPill": 0
-  },
-  "app/portal/services/page.tsx": {
-    "rawButton": 2,
-    "adhocPill": 1
-  },
-  "app/portal/services/[id]/page.tsx": {
-    "rawButton": 18,
-    "adhocPill": 6
   },
   "app/portal/settings/ai/page.tsx": {
     "rawButton": 14,
@@ -332,7 +296,7 @@
     "adhocPill": 2
   },
   "app/portal/tickets/[id]/page.tsx": {
-    "rawButton": 19,
+    "rawButton": 18,
     "adhocPill": 2
   },
   "app/portal/two-factor/backup/page.tsx": {

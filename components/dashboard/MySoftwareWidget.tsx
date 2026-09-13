@@ -51,7 +51,7 @@ export function MySoftwareWidget() {
         ))}
         {remaining > 0 && (
           <Link
-            href="/portal/services"
+            href="/portal/requests/catalog"
             className="px-2.5 py-1 text-xs bg-slate-700/50 text-slate-500 rounded-md hover:text-slate-300 transition-colors"
           >
             +{remaining} more
