@@ -284,7 +284,9 @@ export async function POST(request: NextRequest) {
       if (scheduled_end) customFields.scheduled_end = scheduled_end
       // Override requires_approval based on change_type
       // Standard = no approval, Normal/Emergency = requires approval
-      if (change_type === 'standard') {
+      if (!ticketType) {
+        // no Change Request type configured: nothing to override
+      } else if (change_type === 'standard') {
         ticketType.requires_approval = false
       } else if (change_type === 'normal' || change_type === 'emergency') {
         ticketType.requires_approval = true
