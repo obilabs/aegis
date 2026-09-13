@@ -54,19 +54,37 @@ git clone https://github.com/obilabs/aegis.git
 cd aegis
 
 cp env.example .env
-# Set the three required values in .env (generation commands are in the file):
-#   POSTGRES_PASSWORD, S3_ACCESS_KEY, S3_SECRET_KEY
+# Set the three required values in .env (or edit the file by hand):
+sed -i.bak \
+  -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" \
+  -e "s/^S3_ACCESS_KEY=.*/S3_ACCESS_KEY=$(openssl rand -hex 8)/" \
+  -e "s/^S3_SECRET_KEY=.*/S3_SECRET_KEY=$(openssl rand -hex 24)/" \
+  .env && rm .env.bak
 
-docker compose up -d --build
+docker compose up -d --build        # first build takes several minutes
+
+# One-time setup token, needed to claim the instance:
+docker compose logs aegis | grep 'setup token'
 ```
 
-Open **http://localhost:8080**. The first visit takes you to `/portal/setup` to
-create the administrator account, then through a short setup wizard. There are
-no default credentials.
+Open **http://localhost:8080**. The first visit takes you to `/portal/setup`:
+enter the setup token, create the administrator account, then complete the
+short setup wizard. There are no default credentials.
 
 `docker compose up` refuses to start if a required value is missing. Auth and
 encryption secrets are generated on first boot and stored in `./data/secrets`
 (back that directory up with the rest of `./data`).
+
+**Not on localhost:8080?** Aegis only accepts sign-ins from the address in
+`BETTER_AUTH_URL`. If you change `PORT` or serve Aegis under a hostname, set
+both `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` to the exact URL people type
+(for example `https://help.example.com`) and rebuild with
+`docker compose up -d --build`. `NEXT_PUBLIC_APP_URL` is compiled into the app
+image, so changing it without a rebuild has no effect.
+
+**Network exposure.** nginx listens on all interfaces by default
+(`BIND_HOST=0.0.0.0`). If Aegis sits behind your own reverse proxy or TLS
+terminator on the same host, set `BIND_HOST=127.0.0.1` in `.env`.
 
 ---
 
@@ -219,9 +237,11 @@ setup completes. To choose it yourself — for example in a scripted deploy — 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PORT` | Host port for web access | `8080` |
-| `BETTER_AUTH_URL` | Public URL (set if not localhost) | `http://localhost:8080` |
-| `NEXT_PUBLIC_APP_URL` | Same as BETTER_AUTH_URL | `http://localhost:8080` |
+| `PORT` | Host port for web access (change the two URLs below with it) | `8080` |
+| `BIND_HOST` | Interface nginx binds to; `127.0.0.1` behind a local reverse proxy | `0.0.0.0` |
+| `BETTER_AUTH_URL` | Public URL users type; sign-ins from any other origin are refused | `http://localhost:8080` |
+| `NEXT_PUBLIC_APP_URL` | Same as `BETTER_AUTH_URL`; baked in at build time, so rebuild after changing it | `http://localhost:8080` |
+| `TELEMETRY_ENABLED` | `false` disables all outbound telemetry (see above) | *(unset)* |
 | `GEMINI_API_KEY` | Google AI API key (only if you enable AI features) | -- |
 | `SMTP_HOST` | SMTP server for email notifications | -- |
 | `SMTP_PORT` | SMTP port | `587` |
@@ -280,12 +300,17 @@ Back up the database **and** `./data/secrets` (it holds the keys that decrypt
 stored credentials and email settings).
 
 ```bash
-# Backup database
-docker exec aegis-db pg_dump -U aegis aegis > backup.sql
+# Backup database (run from the directory with docker-compose.yml)
+docker compose exec -T db pg_dump -U aegis aegis > backup.sql
 
-# Restore
-docker exec -i aegis-db psql -U aegis aegis < backup.sql
+# Restore into a fresh install (stop the app first so nothing writes meanwhile)
+docker compose stop aegis
+docker compose exec -T db psql -U aegis aegis < backup.sql
+docker compose start aegis
 ```
+
+Uploaded files live in MinIO under `./data/minio`; include that directory in
+file-level backups.
 
 ---
 
