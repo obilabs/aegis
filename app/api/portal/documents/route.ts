@@ -1,5 +1,5 @@
 import { toSafeHtml } from '@/lib/article-render'
-import { requireStaff } from '@/lib/access'
+import { requireStaff, isAdminRequest } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams.get('q')
 
   try {
-    const userRole = session.user.role || 'user'
+    // Admins (by application role) see every folder; others match folder_permissions by role.
+    const userRole = (await isAdminRequest(request)) ? 'admin' : (session.user.role || 'user')
 
     let sql = `
       SELECT

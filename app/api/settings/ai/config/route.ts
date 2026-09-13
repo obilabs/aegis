@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { query, queryOne } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { z } from 'zod'
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     const { session, orgId } = ctx
 
     // Check admin role
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
 
@@ -87,7 +88,7 @@ export async function PATCH(request: NextRequest) {
     const { session, userId, orgId } = ctx
 
     // Check admin role
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
 

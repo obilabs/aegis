@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { isAdminRequest } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { logAudit, getClientIp } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
@@ -21,7 +22,7 @@ export async function PATCH(
     const { session, userId, orgId } = ctx
     const { id } = await params
 
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

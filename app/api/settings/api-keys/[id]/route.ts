@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { z } from 'zod'
 import { API_SCOPE_LIST, type ApiScope } from '@obilabs/api-scopes'
 import { auth } from '@/lib/auth'
@@ -43,7 +44,7 @@ export async function PATCH(
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
@@ -139,7 +140,7 @@ export async function DELETE(
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
