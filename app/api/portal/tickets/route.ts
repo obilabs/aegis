@@ -296,7 +296,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Set request_category based on type
-    const requestCategory = typeName === 'change' ? 'change' : typeName === 'problem' ? 'problem' : typeName === 'service_request' ? 'service_request' : 'incident'
+    // Values of the request_category enum ('change_request', not 'change').
+    const requestCategory = typeName === 'change' ? 'change_request' : typeName === 'problem' ? 'problem' : typeName === 'service_request' ? 'service_request' : 'incident'
 
     // Validate scheduling fields
     const resolvedActionDateType = action_date_type || 'complete_by'
