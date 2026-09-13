@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser, allows } from '@/lib/access'
+import { requireUser, allows, getTicketAccessFilter } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { z } from 'zod'
@@ -14,7 +14,8 @@ const searchSchema = z.object({
 const QUERIES: Record<string, { sql: string; searchFields: string[] }> = {
   contact: {
     sql: `SELECT c.id, c.first_name || ' ' || COALESCE(c.last_name, '') AS name,
-            c.email AS subtitle, c.contact_type AS type, c.status
+            c.email AS subtitle, c.contact_type AS type,
+            CASE WHEN c.is_active THEN 'active' ELSE 'inactive' END AS status
           FROM contacts c
           WHERE c.organization_id = $1 AND c.is_deleted = false`,
     searchFields: ["c.first_name || ' ' || COALESCE(c.last_name, '')", 'c.email'],
@@ -38,7 +39,7 @@ const QUERIES: Record<string, { sql: string; searchFields: string[] }> = {
   },
   credential: {
     sql: `SELECT cr.id, cr.name, cr.username AS subtitle,
-            cr.credential_type AS type, cr.status
+            cr.category AS type, NULL AS status
           FROM credentials cr
           WHERE cr.organization_id = $1 AND cr.is_deleted = false`,
     searchFields: ['cr.name', 'cr.username'],
@@ -47,12 +48,12 @@ const QUERIES: Record<string, { sql: string; searchFields: string[] }> = {
     sql: `SELECT d.id, d.title AS name, NULL AS subtitle,
             NULL AS type, NULL AS status
           FROM documents d
-          WHERE d.organization_id = $1`,
+          WHERE d.organization_id = $1 AND d.is_deleted = false`,
     searchFields: ['d.title'],
   },
   service: {
     sql: `SELECT s.id, s.name, s.description AS subtitle,
-            s.category AS type, s.status
+            NULL AS type, s.status
           FROM services s
           WHERE s.organization_id = $1`,
     searchFields: ['s.name', 's.description'],
@@ -84,6 +85,9 @@ export async function GET(request: NextRequest) {
   // contacts, assets, credentials, documents, services and other people's
   // tickets are staff data.
   const isStaff = allows(guard.perms, { level: 'staff' })
+  if (type === 'credential' && !allows(guard.perms, { capability: 'credentials' })) {
+    return NextResponse.json({ error: 'Requires credentials capability' }, { status: 403 })
+  }
   if (!isStaff && type !== 'kb_article') {
     return NextResponse.json({ error: 'Staff access required' }, { status: 403 })
   }
@@ -98,6 +102,14 @@ export async function GET(request: NextRequest) {
     if (!isStaff) sql += ` AND a.visibility IN ('public', 'authenticated')`
     const queryParams: (string | number)[] = [orgId]
     let paramIndex = 2
+
+    // Tickets: only those inside the caller's ticket_access scope.
+    if (type === 'ticket') {
+      const access = await getTicketAccessFilter(guard.userId, orgId, 't', paramIndex)
+      sql += ` ${access.clause}`
+      queryParams.push(...(access.params as string[]))
+      paramIndex += access.params.length
+    }
 
     // Search filter
     if (q && q.trim()) {
