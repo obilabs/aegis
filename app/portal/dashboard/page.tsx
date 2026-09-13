@@ -452,7 +452,7 @@ export default function DashboardPage() {
             </Link>
 
             {/* Renewals */}
-            <Link href="/portal/services" className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-hidden hover:border-slate-600 transition-colors block">
+            <Link href="/portal/settings/applications" className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-hidden hover:border-slate-600 transition-colors block">
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 bg-yellow-500/20 rounded-lg flex-shrink-0">
                   <CalendarIcon className="h-5 w-5 text-yellow-400" />
@@ -532,7 +532,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-red-400">{stats.renewals.overdue} contract(s) overdue for renewal</p>
                     <p className="text-xs text-slate-500">Immediate action required</p>
                   </div>
-                  <Link href="/portal/services" className="text-xs text-red-400 hover:underline">Review</Link>
+                  <Link href="/portal/settings/applications" className="text-xs text-red-400 hover:underline">Review</Link>
                 </div>
               )}
               {stats.renewals.upcoming > 0 && (
@@ -542,7 +542,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-yellow-400">{stats.renewals.upcoming} contract(s) renewing soon</p>
                     <p className="text-xs text-slate-500">Within the next 90 days</p>
                   </div>
-                  <Link href="/portal/services" className="text-xs text-yellow-400 hover:underline">Review</Link>
+                  <Link href="/portal/settings/applications" className="text-xs text-yellow-400 hover:underline">Review</Link>
                 </div>
               )}
               {stats.tickets.open > 20 && (

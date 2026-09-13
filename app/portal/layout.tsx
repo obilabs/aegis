@@ -22,7 +22,6 @@ const navigation: NavItem[] = [
   { name: 'Queue', href: '/portal/queue', icon: QueueIcon, featureKey: 'smart_queue' },
   { name: 'Incidents', href: '/portal/tickets?type=incident', icon: TicketIcon },
   { name: 'Requests', href: '/portal/requests', icon: InboxIcon, featureKey: 'service_catalog' },
-  { name: 'Services', href: '/portal/services', icon: BriefcaseIcon, featureKey: 'service_catalog' },
   { name: 'Assets', href: '/portal/assets', icon: ServerIcon, featureKey: 'assets' },
   { name: 'Companies', href: '/portal/companies', icon: BuildingIcon, featureKey: 'companies' },
   { name: 'Contacts', href: '/portal/contacts', icon: UsersIcon },
