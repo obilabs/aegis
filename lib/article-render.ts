@@ -7,7 +7,15 @@
  * sanitizing in six components, and it is the SAME pipeline the PDF path uses, so
  * the web view and the evidence artifact can never diverge.
  *
- * Do NOT sanitize in the browser and do NOT return raw `kb_articles.content`.
+ * Do NOT return raw `kb_articles.content`.
+ *
+ * This is also the ONE sanitizer for every other rich-text field in the app
+ * (ticket descriptions and replies, backlog comments, documents, inbound email
+ * HTML): those are sanitized on write with it, and `components/SafeHtml.tsx` —
+ * the only permitted `dangerouslySetInnerHTML` site, enforced by
+ * `lib/safe-html-usage.test.ts` — applies it again at render. Sanitizing is
+ * idempotent, so the second pass only matters for rows stored before
+ * sanitize-on-write existed or written by another path.
  */
 
 import { sanitizeArticleHtml, renderMarkdown } from '@obilabs/documents';
