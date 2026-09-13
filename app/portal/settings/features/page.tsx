@@ -8,7 +8,7 @@ import {
   Lightbulb, Wand2, Link, Share2, Globe, Activity, AlertTriangle, Check, X,
   Info, ChevronDown, ChevronRight
 } from 'lucide-react';
-import { FEATURES, FEATURE_CATEGORIES, Feature, FeatureCategory, getBadgeColorClass } from '@/lib/features';
+import { FEATURES, FEATURE_CATEGORIES, Feature, FeatureCategory, getBadgeColorClass, isListedFeature, SHOW_UPCOMING_FEATURES } from '@/lib/features';
 
 // Icon mapping
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -54,11 +54,11 @@ export default function FeaturesSettingsPage() {
     try {
       const response = await fetch('/api/features');
       const data = await response.json();
-      setFeatures(data.features || []);
+      setFeatures((data.features || []).filter(isListedFeature));
     } catch (error) {
       console.error('Failed to fetch features:', error);
       // Use client-side defaults
-      const defaultFeatures = Object.values(FEATURES).map(f => ({
+      const defaultFeatures = Object.values(FEATURES).filter(isListedFeature).map(f => ({
         feature_key: f.key,
         feature_name: f.name,
         description: f.description,
@@ -226,12 +226,14 @@ export default function FeaturesSettingsPage() {
             </span>
             <span className="text-gray-600 dark:text-gray-400">Experimental</span>
           </div>
-          <div className="flex items-center gap-2">
+          {SHOW_UPCOMING_FEATURES && (
+            <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
               COMING SOON
             </span>
             <span className="text-gray-600 dark:text-gray-400">Not yet available</span>
           </div>
+          )}
         </div>
       </div>
 
