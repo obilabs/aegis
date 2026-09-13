@@ -1,4 +1,5 @@
 import { toSafeHtml } from '@/lib/article-render'
+import { requireUser } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
@@ -153,6 +154,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireUser(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
