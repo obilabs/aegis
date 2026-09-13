@@ -1,8 +1,18 @@
-# Aegis Client
+# Aegis
 
-**Self-hosted IT Service Management for organizations that own their data.**
+**IT service management that produces compliance evidence as a byproduct of daily work.**
 
-A [ObiLabs](https://obilabs.dev) project.
+Aegis is a self-hosted, single-organization help desk and IT operations portal:
+tickets, assets, contacts, knowledge base, policies and a credential vault. The
+records your team creates while doing ordinary support work — who changed what
+and when, how long a ticket took against its SLA, who acknowledged which policy,
+who completed which training article — are kept as an audit trail you can show
+an auditor, instead of being reconstructed later.
+
+Aegis does not make an organization compliant on its own. It aims to make the
+evidence part less painful.
+
+A [ObiLabs](https://obilabs.dev) project. AGPL-3.0, no paid tiers.
 
 ---
 
@@ -33,8 +43,7 @@ TELEMETRY_ENABLED=false
 
 The env var beats any in-app setting. In-app control lives at
 **Settings → Telemetry** (admin-only). Every consent state change is recorded
-in the `telemetry_consent_log` table (append-only). Consent-first by design per
-[PRINCIPLES.md](../../PRINCIPLES.md) #2.
+in the `telemetry_consent_log` table (append-only). Consent-first by design.
 
 ---
 
@@ -44,71 +53,77 @@ in the `telemetry_consent_log` table (append-only). Consent-first by design per
 git clone https://github.com/obilabs/aegis.git
 cd aegis
 
-# Configure your environment
 cp env.example .env
-# Edit .env — at minimum set BETTER_AUTH_SECRET and admin credentials
+# Set the three required values in .env (generation commands are in the file):
+#   POSTGRES_PASSWORD, S3_ACCESS_KEY, S3_SECRET_KEY
 
-# Start everything
-docker compose up -d
+docker compose up -d --build
 ```
 
-Open **http://localhost:8080** and sign in with the credentials from your `.env` file.
+Open **http://localhost:8080**. The first visit takes you to `/portal/setup` to
+create the administrator account, then through a short setup wizard. There are
+no default credentials.
 
-Default: `admin@aegis.local` / `ChangeMe123!`
-
-That's it. The entrypoint handles database schema, migrations, and admin seeding automatically.
+`docker compose up` refuses to start if a required value is missing. Auth and
+encryption secrets are generated on first boot and stored in `./data/secrets`
+(back that directory up with the rest of `./data`).
 
 ---
 
 ## What This Does
 
-Aegis Client is a single-tenant ITSM platform. One instance per organization, all data stays on your infrastructure.
+One instance per organization; all data stays on your infrastructure.
 
 | Module | Description |
 |--------|-------------|
-| **Tickets** | Incidents, requests, tasks, SLA tracking, custom statuses |
+| **Tickets** | Incidents, requests, changes, problems; custom statuses; SLA clock with pause/resume; status history |
 | **Assets** | Hardware/software inventory, models, lifecycle tracking |
-| **Contacts** | People, companies, locations, org charts |
-| **Knowledge Base** | Articles with categories, search, feedback, public/internal visibility |
-| **Credentials** | AES-256 encrypted password vault |
-| **AI Assistant** | Multi-provider (Gemini, OpenAI, Ollama) with KB-aware responses |
-| **Operations** | Onboarding/offboarding workflows, checklists, delegation |
-| **Services** | Service catalog, vendors, recurring service tracking |
+| **Contacts** | People, companies, locations, departments |
+| **Knowledge Base** | Articles with categories, search, public/internal visibility |
+| **Policies & training** | Policy articles with acknowledgment tracking; training articles with completion records |
+| **Credentials** | AES-256-GCM encrypted password vault |
+| **Audit log** | Append-only record of sensitive actions (cannot be disabled) |
+| **Operations** | Onboarding/offboarding workflows and checklists |
+| **Services** | Service catalog and access requests |
+
+AI features are optional and **off by default**. They do nothing until an
+administrator enables them and configures a provider key (Gemini, OpenAI, or a
+local Ollama). Everything above works without them. Some setup-wizard presets
+suggest turning AI features on; you can leave them off.
 
 ### Feature Status
 
 Everything below ships in **this repository** under AGPL-3.0. There are no paid
 tiers, no license keys that unlock features, and nothing held back as
 "enterprise" — **Status** is a maturity signal (Stable → Beta → Alpha → Coming
-Soon), not an availability gate. If it's in the table, it's in the box you
-self-host.
+Soon), not an availability gate.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Ticket Management | Stable | Incidents, requests, tasks, custom statuses |
 | Contact Management | Stable | People, companies, departments, job titles |
-| Authentication | Stable | Email/password, Google SSO, 2FA |
-| Knowledge Base | Stable | Articles, categories, search, feedback, policies, training |
+| Authentication | Stable | Email/password, Google sign-in, 2FA |
+| Knowledge Base | Stable | Articles, categories, search, policies, training |
 | Asset Management | Stable | Hardware/software inventory, lifecycle tracking |
-| Credential Vault | Stable | AES-256 encrypted password storage |
+| Credential Vault | Stable | Encrypted password storage |
 | Company Management | Stable | Companies, locations, org hierarchy |
+| Audit Log | Stable | Append-only trail of sensitive actions |
 | Dashboard | Stable | Ops dashboard + My Hub with role-aware switching |
+| API Access | Stable | REST API (`/api/v1`) with scoped keys |
 | Email Integration | Beta | Ticket creation from email, notifications |
-| API Access | Stable | REST API for integrations |
 | SLA Management | Beta | Response/resolution targets, pause/resume |
 | Custom Statuses | Beta | Map custom names to open/pending/closed |
 | Vendor Management | Beta | Vendors, contracts, support contacts |
 | Service Catalog | Beta | Services, costs, access request workflows |
 | Onboarding/Offboarding | Beta | Structured employee lifecycle workflows |
 | Policies & Procedures | Beta | Policy articles with acknowledgment tracking |
-| AI Support Chat | Beta | Multi-provider (Gemini, OpenAI, Ollama) |
-| AI Suggestions | Beta | Smart ticket/KB suggestions |
+| Provider Access | Beta | Grant scoped, audited, revocable access to an external MSP/partner. This is the organization's side — it controls who sees its data. |
 | Smart Queue | Beta | Priority-scored ticket queue |
-| AI Triage | Alpha | AI categorization and routing |
-| Workspaces | Alpha | Multi-department helpdesks |
+| AI Chat / Suggestions | Beta | Optional, off by default; needs your own provider key |
+| AI Triage | Alpha | Optional, off by default |
+| Workspaces | Alpha | Multi-department help desks |
 | Teams & Routing | Alpha | Team-based assignment |
 | Approval Workflows | Alpha | Multi-level change approvals |
-| Provider Access | Beta | Grant scoped, audited, instantly-revocable access to an external MSP/partner. This is the **client side** — the org controls who sees its data; the MSP's own multi-tenant portal is a separate product. |
 | Webhooks | Coming Soon | External event delivery |
 | SSO (SAML/OIDC) | Coming Soon | SAML/OIDC single sign-on |
 
@@ -120,45 +135,57 @@ self-host.
           Internet
              |
         +---------+
-        |  nginx   |  :8080 (only exposed port)
+        |  nginx  |  :8080 (only exposed port)
         +----+----+
              |
         +----+----+
-        | Next.js  |  :3000 (internal)
-        +--+---+--+
-           |   |
-     +-----++ +------+
-     |Postgres| |Redis |
-     | :5432  | |:6379 |
-     +--------+ +-----+
-     (internal)  (internal)
+        | Next.js |  :3000 (internal)
+        +--+--+--++
+           |  |  |
+   +-------+  |  +--------+
+   |          |           |
++--+-----+ +--+---+ +-----+--+
+|Postgres| |Redis | | MinIO  |
+| :5432  | |:6379 | | :9000  |
++--------+ +------+ +--------+
+         (all internal)
 ```
 
-Only nginx is exposed to the host. PostgreSQL, Redis, and the application are all internal.
+Only nginx is exposed to the host. PostgreSQL, Redis, MinIO and the application
+are internal to the compose network.
 
 ---
 
 ## Configuration
 
-Copy `env.example` to `.env` and configure before first run.
+Copy `env.example` to `.env` and configure before first run. `env.example` is
+the full, commented reference; the tables below cover the common settings.
 
 ### Required
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `BETTER_AUTH_SECRET` | Session encryption key. Generate: `openssl rand -base64 32` | (insecure default) |
-| `POSTGRES_PASSWORD` | Database password | `aegis` |
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_PASSWORD` | Database password. Generate: `openssl rand -hex 16` |
+| `S3_ACCESS_KEY` | MinIO root user, also used by the app. Generate: `openssl rand -hex 8` |
+| `S3_SECRET_KEY` | MinIO root password. Generate: `openssl rand -hex 24` |
+
+There are no defaults for these. **Upgrading an install that relied on the old
+defaults** (`aegis` for Postgres, `minioadmin` / `minioadmin123` for MinIO): set
+those values explicitly in `.env` so the existing data stays reachable, then
+rotate them.
+
+`BETTER_AUTH_SECRET`, `AEGIS_SECRETS_KEY` and `CREDENTIAL_ENCRYPTION_KEY` are
+optional: leave them blank and strong values are generated and persisted to
+`./data/secrets` on first boot. Set them explicitly to pin or rotate.
 
 ### Admin Account
 
 Two modes for creating the first admin:
 
-**Mode 1 — Interactive (recommended for individual operators):** leave
-`ADMIN_PASSWORD` blank. On first browser visit, you'll land at
-`/portal/setup` to create the admin in the UI (email + password fields),
-then walk through the org wizard (including the non-bypassable telemetry
-consent step, see [PRINCIPLES.md](../../PRINCIPLES.md) #2). No admin
-secret ever lives in `.env`.
+**Mode 1 — Interactive (recommended):** leave `ADMIN_PASSWORD` blank. On first
+browser visit you land at `/portal/setup` to create the admin in the UI, then
+walk through the setup wizard (including the telemetry consent step). No admin
+secret lives in `.env`.
 
 **Mode 2 — Headless (for CI/CD / scripted deploys):** set `ADMIN_PASSWORD`
 before first launch. Aegis seeds the admin from these env vars on first
@@ -195,90 +222,80 @@ setup completes. To choose it yourself — for example in a scripted deploy — 
 | `PORT` | Host port for web access | `8080` |
 | `BETTER_AUTH_URL` | Public URL (set if not localhost) | `http://localhost:8080` |
 | `NEXT_PUBLIC_APP_URL` | Same as BETTER_AUTH_URL | `http://localhost:8080` |
-| `GEMINI_API_KEY` | Google AI API key (for AI assistant) | -- |
+| `GEMINI_API_KEY` | Google AI API key (only if you enable AI features) | -- |
 | `SMTP_HOST` | SMTP server for email notifications | -- |
 | `SMTP_PORT` | SMTP port | `587` |
 | `EMAIL_FROM` | From address for emails | `noreply@aegis.local` |
 | `NEXT_PUBLIC_SUPPORT_EMAIL` | Support email shown on login page | -- |
 | `NEXT_PUBLIC_SUPPORT_TEAM` | Support team name shown on login page | `IT Support` |
 | `ALLOW_REGISTRATION` | Allow public signup (`true`/`false`) | `false` |
-
-### Generating Secrets
-
-```bash
-# Auth secret (required for production)
-openssl rand -base64 32
-
-# Database password
-openssl rand -hex 16
-```
+| `AEGIS_VERSION` | App image tag. `local` builds from source; to run a pre-built image pin an immutable tag (a release or `sha-<commit>`), never `latest` | `local` |
 
 ---
 
 ## Startup Behavior
 
-On every container start, the entrypoint automatically:
+On every container start, the entrypoint:
 
 1. Waits for PostgreSQL to be ready
-2. Applies base schema (`init.sql` -- all `IF NOT EXISTS`, safe to re-run)
-3. Runs all migrations in order (all idempotent)
-4. Seeds the admin account if no users exist (skips if users already exist)
+2. On a fresh database, applies the full schema from `database/init.sql`
+3. Applies any migrations in `database/migrations/` not yet recorded in
+   `schema_migrations` (boot stops if one fails)
+4. Seeds the admin account only if `ADMIN_PASSWORD` is set and no users exist
 5. Starts the Next.js server
 
-No manual migration or seed commands needed.
+No manual migration or seed commands are needed.
 
 ---
 
 ## Operations
 
 ```bash
-# Start
-docker compose up -d
+# Start (building the app image from this checkout)
+docker compose up -d --build
 
-# Stop
+# Stop (data in ./data is kept)
 docker compose down
 
-# View logs
-docker compose logs -f web
+# View app logs
+docker compose logs -f aegis
 
-# Rebuild after update
-docker compose up -d --build
-
-# Full reset (deletes all data)
-docker compose down -v
-docker compose up -d --build
-```
-
-### Updating
-
-```bash
+# Update
 git pull
 docker compose up -d --build
 ```
 
-Migrations run automatically on startup. No manual steps needed.
+**Full reset.** Aegis uses bind mounts under `./data`, so `docker compose down -v`
+does **not** delete data. To wipe everything, including generated secrets:
+
+```bash
+docker compose down
+rm -rf ./data      # irreversible
+docker compose up -d --build
+```
 
 ### Backups
 
+Back up the database **and** `./data/secrets` (it holds the keys that decrypt
+stored credentials and email settings).
+
 ```bash
 # Backup database
-docker exec aegis_db pg_dump -U aegis aegis > backup.sql
+docker exec aegis-db pg_dump -U aegis aegis > backup.sql
 
 # Restore
-docker exec -i aegis_db psql -U aegis aegis < backup.sql
+docker exec -i aegis-db psql -U aegis aegis < backup.sql
 ```
 
 ---
 
 ## Security Notes
 
-- Registration is **disabled by default** after the first user exists
-- All API routes require authentication
-- All database queries are scoped by `organization_id`
-- Credentials are AES-256 encrypted at rest
+- No default credentials: the administrator is created at `/portal/setup` (or seeded from `ADMIN_PASSWORD`)
+- Self-registration is closed once the first user exists, unless an admin allows specific email domains
+- Credentials are encrypted at rest (AES-256-GCM)
 - Only nginx is exposed to the network; all other services are internal
-- Change `BETTER_AUTH_SECRET` and `POSTGRES_PASSWORD` before production use
-- Enable 2FA for admin accounts (Settings > Security)
+- Enable 2FA for admin accounts
 
 ---
 
@@ -288,10 +305,10 @@ docker exec -i aegis_db psql -U aegis aegis < backup.sql
 |-------|-----------|
 | Framework | Next.js 15 (App Router) |
 | Language | TypeScript |
-| Auth | Better Auth (email/password, Google SSO, 2FA) |
-| Database | PostgreSQL 16 |
-| Cache | Redis 7 |
-| AI | Gemini, OpenAI, Ollama (configurable) |
+| Auth | Better Auth (email/password, Google sign-in, 2FA) |
+| Database | PostgreSQL 16 (pgvector) |
+| Jobs | pg-boss |
+| Object storage | MinIO (S3-compatible) |
 | UI | Tailwind CSS, Heroicons, Lucide |
 | Reverse Proxy | nginx |
 
@@ -302,15 +319,21 @@ docker exec -i aegis_db psql -U aegis aegis < backup.sql
 For contributors working on the source code:
 
 ```bash
-# Prerequisites: Node.js 20+, pnpm 9+, PostgreSQL, Redis
+# Prerequisites: Node.js 20+, pnpm 10, Docker
 
+docker compose -f docker-compose.dev.yml up -d   # Postgres (+ nginx) for local dev
 pnpm install
 cp env.example .env.local
-# Edit .env.local with local database credentials
+# In .env.local: DATABASE_URL=postgresql://aegis:aegis-dev@localhost:5433/aegis
 
 pnpm dev
 # Open http://localhost:3000
+
+pnpm test                 # unit tests
+pnpm exec tsc --noEmit    # type check
 ```
+
+**Demo data:** TODO — there is no maintained demo dataset yet.
 
 ### Project Structure
 
@@ -320,46 +343,32 @@ app/
     portal/                 Authenticated portal APIs
     settings/               Settings APIs
     kb/                     Knowledge base (public + portal)
-    ai/                     AI chat and processing
+    v1/                     Versioned external API
     auth/[...all]/          Better Auth handler
   portal/                   Authenticated pages
-    dashboard/
-    tickets/
-    contacts/
-    assets/
-    kb/
-    chat/
-    settings/
-  (public pages)            Login, KB, marketing
+  (public pages)            Login, public KB
 
 lib/
   db.ts                     Database pool (pool, query, queryOne)
   auth.ts                   Better Auth configuration
-  features.ts               Feature flag system
-  ai-chat-security.ts       AI access control
-  email-queue.ts            pg-boss email queue
+  permissions.ts            Role capabilities and ticket access
+  features.ts               Feature flag registry
+  article-render.ts         The HTML sanitizer used for all rich text
 
 database/
-  init.sql                  Full schema (fresh installs)
-  migrations/               Incremental migrations (001-050)
+  init.sql                  Full schema for fresh installs
+  migrations/               Incremental migrations, applied on startup
 ```
-
-### Database
-
-50 migrations covering: organizations, tickets, contacts, assets, credentials, knowledge base, AI chat, services, RBAC, workflows, feature flags, and more. `init.sql` contains the complete schema (145 tables) for fresh installs.
 
 ---
 
 ## Comparison
 
-| Feature | Aegis | ITFlow | Freshservice |
-|---------|-------|--------|--------------|
-| Self-Hosted | Yes | Yes | No |
-| Data Sovereignty | Yes | Yes | No |
-| Open Source | Yes | Yes | No |
-| Per-User Fees | No | No | Yes ($19-119/mo) |
-| AI Integration | Multi-provider | Basic | Freddy AI |
-| MCP Server | Yes | No | No |
+| | Aegis | ITFlow | Freshservice |
+|---|-------|--------|--------------|
+| Self-hosted | Yes | Yes | No |
+| Open source | Yes (AGPL-3.0) | Yes | No |
+| Per-user fees | No | No | Yes |
 
 ---
 
@@ -375,10 +384,13 @@ the copyright to your work; the CLA is a licence grant, not an assignment.
 
 ## License
 
-**AGPL-3.0** -- Free and open source. The network-use clause ensures that anyone running a modified version as a service must share their changes.
+**AGPL-3.0** — free and open source. The network-use clause means anyone running
+a modified version as a service must share their changes.
 
 See [LICENSE](LICENSE) for full terms.
 
 ---
+
+Built with AI-assisted development (Claude Code), under human direction and review.
 
 Built by [ObiLabs](https://obilabs.dev)

@@ -1,4 +1,4 @@
-# Aegis Client - Development Workflow
+# Aegis - Development Workflow
 
 ## Documentation-First Approach
 

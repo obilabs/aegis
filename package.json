@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
   "private": true,
-  "description": "Aegis Client - Self-hosted ITSM portal (Open Source)",
+  "description": "Aegis - self-hosted IT service management (open source)",
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:network": "next dev --turbopack -H 0.0.0.0",
@@ -15,7 +15,6 @@
     "db:generate": "npx @better-auth/cli@latest generate",
     "db:migrate": "npx @better-auth/cli@latest migrate",
     "seed:admin": "npx tsx scripts/seed-admin.ts",
-    "seed:data": "Get-Content database/seed.sql | docker exec -i aegis_postgres psql -U postgres -d aegis",
     "check:secrets": "node scripts/check-no-secrets.mjs"
   },
   "dependencies": {
@@ -38,7 +37,7 @@
     "lucide-react": "^0.468.0",
     "mailparser": "^3.9.8",
     "next": "^15.5.12",
-    "nodemailer": "^9.0.5",
+    "nodemailer": "^9.1.1",
     "pg": "^8.13.0",
     "pg-boss": "^12.9.0",
     "react": "^19.0.0",
@@ -65,8 +64,12 @@
   "packageManager": "pnpm@10.19.0",
   "pnpm": {
     "overrides": {
-      "nodemailer": "^9.0.5",
-      "sharp": "^0.35.3",
+      "nodemailer": "^9.1.1",
+      "sharp": "^0.35.4",
+      "fast-uri": "^3.1.6",
+      "sanitize-html": "^2.17.7",
+      "qs": "^6.16.0",
+      "hono": "^4.13.5",
       "postcss": "^8.5.23",
       "deepmerge-ts": "^8.0.2",
       "vite": "^6.4.3",

@@ -31,15 +31,15 @@ export default function TermsPage() {
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">2. Open Source License</h2>
           <p className="text-gray-600 mb-4">
-            Aegis Client is released under the MIT License. You are free to use, modify, and distribute
-            the software in accordance with the license terms.
+            Aegis is released under the GNU Affero General Public License v3.0 (AGPL-3.0). You are free
+            to use, modify, and distribute the software in accordance with the license terms.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">3. Cloud Hosting Service</h2>
           <p className="text-gray-600 mb-4">
             If you use our Cloud hosting service (when available), additional terms will apply.
             We provide infrastructure hosting only - you are responsible for your own data and
-            Google Workspace configuration.
+            configuration.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">4. Your Responsibilities</h2>

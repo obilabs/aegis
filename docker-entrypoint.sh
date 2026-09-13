@@ -2,7 +2,7 @@
 set -e
 
 echo "============================================"
-echo "Aegis Client - Starting up..."
+echo "Aegis - Starting up..."
 echo "============================================"
 
 # Parse DATABASE_URL to extract connection details

@@ -1,4 +1,4 @@
--- Aegis Client - Database Schema
+-- Aegis - Database Schema
 -- Generated from live database, consolidated from 53 migrations
 -- This is the single source of truth for fresh installs
 --
