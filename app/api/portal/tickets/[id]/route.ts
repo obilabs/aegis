@@ -2,7 +2,8 @@ import { toSafeHtml } from '@/lib/article-render'
 import { pool, query, queryOne } from '@/lib/db'
 import { logAudit, getClientIp } from '@/lib/audit'
 import { getAuthContext } from '@/lib/org'
-import { hasCapabilityOrAdmin, getTicketAccessFilter } from '@/lib/permissions'
+import { hasCapabilityOrAdmin, getTicketAccessFilter, getUserPermissions } from '@/lib/permissions'
+import { decideTicketEdit } from '@/lib/ticket-edit-policy'
 import { logTicketFieldChanges, diffTicketFields, TRACKED_TICKET_FIELDS } from '@/lib/ticket-audit'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -156,6 +157,8 @@ export async function GET(
     }
 
     // Get replies
+    const viewerPerms = await getUserPermissions(ctx.userId)
+    const viewerIsStaff = viewerPerms.adminAccess || viewerPerms.ticketAccess !== 'own'
     const repliesResult = await pool.query(`
       SELECT
         tr.id,
@@ -191,8 +194,11 @@ export async function GET(
       LEFT JOIN companies co ON uc.company_id = co.id
       LEFT JOIN api_keys ak ON ak.id = tr.via_pairing_key_id
       WHERE tr.ticket_id = $1
+        -- Internal notes are staff-only: a requester (ticket_access "own")
+        -- never receives them.
+        AND (tr.is_internal = false OR $2::boolean)
       ORDER BY tr.created_at ASC
-    `, [id])
+    `, [id, viewerIsStaff])
 
     const replies = repliesResult.rows.map(r => ({
       id: r.id,
@@ -430,17 +436,33 @@ export async function PATCH(
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { userId, orgId } = ctx
 
-    // Editing a ticket (assign / status / priority / subject / category) is a
-    // triage action — the same gate the dedicated POST .../assign route
-    // enforces. Without it, ANY authenticated user (End User included) could
-    // reassign, re-status, or re-prioritise any ticket whose id they knew,
-    // silently bypassing the /assign triage gate (audit: unguarded PATCH).
-    if (!(await hasCapabilityOrAdmin(userId, 'triage'))) {
-      return NextResponse.json({ error: 'Requires triage capability' }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await request.json()
+
+    // Edit policy (lib/ticket-edit-policy.ts): triage may make any edit;
+    // technicians (ticket_access team/all) may work tickets in their scope but
+    // not reassign them; end users do not edit tickets. Reassignment keeps the
+    // same gate as POST .../assign.
+    const canTriage = await hasCapabilityOrAdmin(userId, 'triage')
+    let inScope = true
+    const perms = await getUserPermissions(userId)
+    if (!canTriage && perms.ticketAccess !== 'own') {
+      const access = await getTicketAccessFilter(userId, orgId, 't', 3)
+      const scoped = await pool.query(
+        `SELECT 1 FROM tickets t WHERE t.id = $1 AND t.organization_id = $2 ${access.clause}`,
+        [id, orgId, ...access.params]
+      )
+      inScope = scoped.rows.length > 0
+    }
+    const decision = decideTicketEdit({
+      canTriage,
+      ticketAccess: perms.ticketAccess,
+      inScope,
+      changesAssignment: body?.assigned_to !== undefined || body?.assigned_team !== undefined,
+    })
+    if (!decision.ok) {
+      return NextResponse.json({ error: decision.error }, { status: decision.status })
+    }
 
     // Fetch current ticket values for audit trail diff. Scoped to the caller's
     // organization — a ticket in another org reads as 404 (never leak it).
@@ -499,7 +521,7 @@ export async function PATCH(
 
     if (body.assigned_to !== undefined) {
       updates.push(`assigned_to = $${paramIndex++}`)
-      values.push(body.assigned_to)
+      values.push(body.assigned_to || null) // '' from the edit form means unassign
 
       // Auto-transition New → Open when ticket is assigned
       if (body.assigned_to) {

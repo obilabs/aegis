@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
-import { getOrgId } from '@/lib/org'
+import { getOrgId, getUserId } from '@/lib/org'
+import { getTicketAccessFilter, getUserPermissions } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -20,12 +21,18 @@ export async function GET(
 
     const { id: ticketId } = await params
     const orgId = await getOrgId()
+    const userId = await getUserId(session.user.email)
 
-    // Verify ticket exists and belongs to this org
+    // Verify the ticket exists in this org and is inside the caller's
+    // ticket_access scope (same scoping as the ticket read: out of scope reads
+    // as not found).
+    const access = await getTicketAccessFilter(userId, orgId, 't', 3)
     const ticketCheck = await pool.query(
-      'SELECT id FROM tickets WHERE id = $1 AND organization_id = $2',
-      [ticketId, orgId]
+      `SELECT t.id FROM tickets t WHERE t.id = $1 AND t.organization_id = $2 ${access.clause}`,
+      [ticketId, orgId, ...access.params]
     )
+    const perms = await getUserPermissions(userId)
+    const viewerIsStaff = perms.adminAccess || perms.ticketAccess !== 'own'
     if (ticketCheck.rows.length === 0) {
       return NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
     }
@@ -132,8 +139,9 @@ export async function GET(
       LEFT JOIN users u ON tr.user_id = u.id
       LEFT JOIN contacts c ON tr.contact_id = c.id
       WHERE tr.ticket_id = $1
+        AND (tr.is_internal = false OR $2::boolean)
       ORDER BY tr.created_at DESC
-    `, [ticketId])
+    `, [ticketId, viewerIsStaff])
 
     const replyEvents = repliesResult.rows.map(r => ({
       ...r,
