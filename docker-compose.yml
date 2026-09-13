@@ -1,10 +1,9 @@
-# Aegis Client - Docker Compose (single file for dev + prod)
+# Aegis - Docker Compose (single file for dev + prod)
 #
 # QUICK START:
-#   1. cp env.example .env  (then edit values)
-#   2. docker compose up -d          (pulls pre-built image)
-#      OR: docker compose up -d --build  (builds from source)
-#   3. Open http://localhost:8080
+#   1. cp env.example .env  (then set POSTGRES_PASSWORD, S3_ACCESS_KEY, S3_SECRET_KEY)
+#   2. docker compose up -d --build  (builds the app image from this checkout)
+#   3. Open http://localhost:8080 and follow /portal/setup
 #
 # Architecture:
 #   nginx:8080 → nextjs:3000 (internal) → postgres:5432 (internal)
@@ -12,10 +11,12 @@
 #
 # Prod-flexibility knobs (set in .env, defaults keep dev working):
 #   BIND_HOST           = interface to bind nginx to (default 0.0.0.0)
-#                         Set to a LAN IP like 172.25.10.20 for multi-host
+#                         Set to a LAN IP like 192.168.1.20 on shared
 #                         hosts where 0.0.0.0 would conflict.
 #   PORT                = host port for nginx (default 8080)
-#   AEGIS_VERSION       = image tag from ghcr.io (default 0.1.0)
+#   AEGIS_VERSION       = app image tag (default `local` = build from source;
+#                         set an immutable tag - a release or sha-<commit> -
+#                         to run a pre-built image. Never latest / edge.)
 #
 # Storage: bind mounts in ./data/ per root CLAUDE.md rule ("Volumes stored
 # in ./data/ within the project folder — never shared named volumes").
@@ -30,7 +31,7 @@
 services:
   # Nginx reverse proxy (ONLY exposed service)
   nginx:
-    image: nginx:alpine
+    image: nginx:1.30.4-alpine
     container_name: aegis-nginx
     ports:
       - "${BIND_HOST:-0.0.0.0}:${PORT:-8080}:80"
@@ -53,7 +54,7 @@ services:
   # "docker compose up" pulls the pre-built image.
   # "docker compose up --build" builds from source instead.
   aegis:
-    image: ghcr.io/obilabs/aegis:${AEGIS_VERSION:-0.1.0}
+    image: ghcr.io/obilabs/aegis:${AEGIS_VERSION:-local}
     build:
       # Standalone repo: @obilabs/* are public on npmjs — install anonymously,
       # no token or BuildKit secret. Build with plain: docker compose build
@@ -65,7 +66,7 @@ services:
     expose:
       - "3000"
     environment:
-      - DATABASE_URL=postgresql://aegis:${POSTGRES_PASSWORD:-aegis}@db:5432/aegis
+      - DATABASE_URL=postgresql://aegis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see env.example)}@db:5432/aegis
       # Leave BETTER_AUTH_SECRET unset to have one auto-generated + persisted to
       # ./data/secrets/ on first boot (spec: zero-config-secret-bootstrap). An
       # empty default (not a "change-me" sentinel) is required so the bootstrap
@@ -83,8 +84,8 @@ services:
       - ADMIN_NAME=${ADMIN_NAME:-Aegis Administrator}
       - REDIS_URL=redis://redis:6379
       - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin123}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see env.example)}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see env.example)}
       - S3_BUCKET=${S3_BUCKET:-aegis-uploads}
       - S3_REGION=${S3_REGION:-us-east-1}
       - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-50}
@@ -155,7 +156,7 @@ services:
       - "5432"
     environment:
       POSTGRES_USER: aegis
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see env.example)}
       POSTGRES_DB: aegis
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
@@ -188,15 +189,17 @@ services:
 
   # MinIO object storage (internal only — for file uploads)
   minio:
-    image: minio/minio:latest
+    # MinIO's own registry (the Docker Hub minio/* images are no longer
+    # pullable). Pinned to a release tag; bump deliberately.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: aegis-minio
     command: server /data --console-address ":9001"
     expose:
       - "9000"
       - "9001"
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin123}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see env.example)}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see env.example)}
     volumes:
       - ./data/minio:/data
     healthcheck:
@@ -211,20 +214,20 @@ services:
 
   # Auto-create default bucket on startup
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: aegis-minio-init
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set aegis http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin123};
+      mc alias set aegis http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
       mc mb --ignore-existing aegis/${S3_BUCKET:-aegis-uploads};
       exit 0;
       "
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin123}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see env.example)}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see env.example)}
     networks:
       - aegis
 
@@ -236,7 +239,7 @@ services:
   # works). CPU-only; no GPU required.
   docling:
     profiles: [docling, full]
-    image: quay.io/docling-project/docling-serve
+    image: quay.io/docling-project/docling-serve:v1.32.0
     container_name: aegis-docling
     expose:
       - "5001"
