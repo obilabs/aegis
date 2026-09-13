@@ -1,7 +1,8 @@
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { getOrgId, getAuthContext } from '@/lib/org'
-import { hasCapabilityOrAdmin } from '@/lib/permissions'
+import { hasCapabilityOrAdmin, isAdmin } from '@/lib/permissions'
+import { decidePrivilegedUpdate, lookupRole, userHasAdminRole } from '@/lib/role-grants'
 import { logAudit, getClientIp } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -134,6 +135,37 @@ export async function PATCH(
         )
       }
     }
+
+    // Role-grant policy (Principle 1, lib/role-grants.ts): admin roles are only
+    // granted by an admin, admins are only changed by an admin, and nobody
+    // changes their own role.
+    let newRoleIsAdmin = false
+    let targetIsAdmin = false
+    let actorIsAdmin = false
+    if (touchesPrivileged) {
+      if (data.role_id) {
+        const role = await lookupRole(data.role_id, orgId)
+        if (!role) {
+          return NextResponse.json({ error: 'Role not found' }, { status: 400 })
+        }
+        newRoleIsAdmin = role.adminAccess
+      }
+      targetIsAdmin = await userHasAdminRole(id, orgId)
+      actorIsAdmin = await isAdmin(userId)
+      const decision = decidePrivilegedUpdate({
+        actorUserId: userId,
+        actorIsAdmin,
+        targetUserId: id,
+        changesRole: data.role_id !== undefined,
+        newRoleIsAdmin,
+        targetIsAdmin,
+        touchesPrivileged,
+      })
+      if (!decision.ok) {
+        return NextResponse.json({ error: decision.error }, { status: decision.status })
+      }
+    }
+
     const updates: string[] = []
     const values: unknown[] = []
     let paramIndex = 1
@@ -179,15 +211,8 @@ export async function PATCH(
       )
       const target = targetRes.rows[0]
       const targetIsActiveAdmin = target?.admin_access === true && target?.status === 'active'
-      let newRoleIsAdmin = target?.admin_access === true
-      if (willChangeRole) {
-        const nrRes = await pool.query(
-          `SELECT (permissions->>'admin_access')::boolean AS admin_access FROM user_roles WHERE id = $1`,
-          [data.role_id],
-        )
-        newRoleIsAdmin = nrRes.rows[0]?.admin_access === true
-      }
-      const wouldLoseAdmin = targetIsActiveAdmin && (willDeactivate || (willChangeRole && !newRoleIsAdmin))
+      const staysAdmin = willChangeRole ? newRoleIsAdmin : target?.admin_access === true
+      const wouldLoseAdmin = targetIsActiveAdmin && (willDeactivate || (willChangeRole && !staysAdmin))
       if (wouldLoseAdmin) {
         const countRes = await pool.query(
           `SELECT COUNT(*)::int AS n
@@ -249,6 +274,23 @@ export async function PATCH(
         newValues,
         actorIp: getClientIp(request.headers),
       })
+
+      // A grant or removal of administrator access gets its own, explicitly
+      // named audit entry so it is easy to find in the trail.
+      if (data.role_id !== undefined && newRoleIsAdmin !== targetIsAdmin) {
+        logAudit({
+          orgId,
+          userId,
+          action: newRoleIsAdmin ? 'user.admin_role_granted' : 'user.admin_role_revoked',
+          actionCategory: 'update',
+          entityType: 'user',
+          entityId: id,
+          entityName: result.rows[0].email,
+          oldValues: { role_id: priorPrivileged.role_id, admin_access: targetIsAdmin },
+          newValues: { role_id: data.role_id ?? null, admin_access: newRoleIsAdmin },
+          actorIp: getClientIp(request.headers),
+        })
+      }
     }
 
     return NextResponse.json(result.rows[0])
