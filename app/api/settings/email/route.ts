@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { z } from 'zod'
 import { getProvider, PROVIDER_IDS, type ProviderId } from '@obilabs/email'
 import { queryOne } from '@/lib/db'
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const { session, orgId } = ctx
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
@@ -131,7 +132,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const { session, orgId } = ctx
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 

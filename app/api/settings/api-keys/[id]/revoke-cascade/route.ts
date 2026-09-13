@@ -31,6 +31,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { pool, queryOne } from '@/lib/db'
@@ -55,7 +56,7 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.role !== 'admin') {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 

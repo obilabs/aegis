@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { isAdminRequest } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const orgId = await getOrgId()
 
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

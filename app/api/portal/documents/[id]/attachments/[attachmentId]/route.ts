@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/access'
+import { requireStaff, isAdminRequest } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -20,7 +20,8 @@ export async function GET(
   // RBAC read scoping (audit 2026-07-23): gate the attachment download by the
   // PARENT document's folder permissions (same predicate as the document read
   // + LIST). Inaccessible → 404 (never leak existence).
-  const userRole = session.user.role || 'user'
+  // Admins (by application role) see every folder; others match folder_permissions by role.
+    const userRole = (await isAdminRequest(_request)) ? 'admin' : (session.user.role || 'user')
   const folderAccess = userRole !== 'admin'
     ? `AND (
         d.folder_id IS NULL

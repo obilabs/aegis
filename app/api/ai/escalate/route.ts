@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest, isAdminIdentity } from '@/lib/access'
 import { query, queryOne } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { ESCALATION_SUMMARY_PROMPT } from '@/lib/support-prompt'
@@ -133,10 +134,9 @@ export async function POST(request: NextRequest) {
     if (!isOwner) {
       let isAdmin = false
       if (authCtx) {
-        isAdmin = authCtx.session.user.role === 'admin'
+        isAdmin = await isAdminRequest(request)
       } else {
-        const userRow = await queryOne<{ role: string }>('SELECT role FROM "user" WHERE id = $1', [userId])
-        isAdmin = userRow?.role === 'admin'
+        isAdmin = await isAdminIdentity(userId)
       }
 
       if (!isAdmin) {

@@ -34,9 +34,11 @@ const GUARDS = [
   /\bgetTicketAccessFilter\(/,
   /\bfindAccessibleTicket\(/,
   /\bgetUserPermissions\(/,
-  // Better Auth role check used by the older admin-only settings routes
-  /\.role\s*[!=]==\s*'admin'/,
-  /\brole\s*[!=]==\s*'admin'/,
+  /\brequestAllows\(/,
+  /\bisAdminRequest\(/,
+  /\bisStaffRequest\(/,
+  /\bisAdminIdentity\(/,
+  /\bisStaffIdentity\(/,
 ]
 
 type Reason = string
@@ -58,7 +60,6 @@ const ALLOWED: Record<string, Reason> = {
 
   // ---- any signed-in user; rows limited to the caller ----
   'ai/chat/suggestions GET': "prompt suggestions from the caller's own tickets and public articles",
-  'ai/sessions/[id]/messages GET': 'session owner, or admin/technician, checked in the handler',
   'ai/escalation-summary POST': "summarises the caller's own chat transcript from the request body",
   'features GET': 'feature flag states, used to render navigation',
   'portal/ai-disclaimer GET': 'static disclaimer text',
@@ -75,10 +76,7 @@ const ALLOWED: Record<string, Reason> = {
   'portal/dashboard/preference GET': "caller's own dashboard preference",
   'portal/dashboard/preference POST': "caller's own dashboard preference",
   'portal/dashboard/training-progress GET': "caller's own training progress",
-  'portal/documents GET': 'folder permissions applied in the query',
-  'portal/documents/[id] GET': 'folder permissions applied in the query',
   'portal/documents/[id]/attachments GET': 'parent document visibility checked in the query',
-  'portal/documents/[id]/attachments/[attachmentId] GET': 'folder permissions applied in the query',
   'portal/documents/folders GET': 'folder list; restricted folders filtered by role',
   'portal/documents/folders/[id] GET': 'folder permissions applied in the query',
   'portal/documents/templates GET': 'document templates',
@@ -173,6 +171,23 @@ describe('API route access checks', () => {
       { key: 'x GET', guarded: false },
       { key: 'x POST', guarded: true },
     ])
+  })
+
+  it('no route decides admin or staff access from the Better Auth role', () => {
+    // session.user.role / "user".role is 'admin' only for the account created
+    // at setup; an administrator granted the role later would be refused.
+    // Use requireStaff / requestAllows / isAdminRequest (lib/access.ts), which
+    // read the application role.
+    const BA_ROLE =
+      /(\.role\s*[!=]==\s*'(admin|technician|helpdesk|manager)')|(\[[^\]]*'admin'[^\]]*\]\.includes\([^)]*\.role\b)|(SELECT role FROM "user")/
+    const hits = routeFiles(API).flatMap((file) =>
+      readFileSync(file, 'utf8')
+        .split(/\r?\n/)
+        .map((line, i) => ({ line, i }))
+        .filter(({ line }) => BA_ROLE.test(line))
+        .map(({ line, i }) => `${relative(ROOT, file).split(sep).join('/')}:${i + 1}: ${line.trim()}`),
+    )
+    expect(hits).toEqual([])
   })
 
   it('the allow list has no stale entries', () => {

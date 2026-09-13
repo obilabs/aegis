@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { getOrgId } from '@/lib/org'
 import { queryOne } from '@/lib/db'
@@ -23,7 +24,7 @@ export async function GET(
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.role !== 'admin') {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 

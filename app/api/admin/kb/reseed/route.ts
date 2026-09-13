@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { seedSystemArticles } from '@/lib/seed-articles'
 import { seedPolicyArticles } from '@/lib/seed-policies'
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { session, orgId, userId } = ctx
-  if (session.user.role !== 'admin') {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   }
 

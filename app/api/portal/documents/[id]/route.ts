@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/access'
+import { requireStaff, isAdminRequest } from '@/lib/access'
 import { toSafeHtml } from '@/lib/article-render'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
@@ -35,7 +35,8 @@ export async function GET(
     // restricted-folder access. Replicate the LIST's predicate: a doc in a
     // restricted folder is readable only by a role with a folder_permissions
     // grant (admins bypass). Inaccessible → 404 (never leak existence).
-    const userRole = session.user.role || 'user'
+    // Admins (by application role) see every folder; others match folder_permissions by role.
+    const userRole = (await isAdminRequest(request)) ? 'admin' : (session.user.role || 'user')
     const folderAccess = userRole !== 'admin'
       ? `AND (
           d.folder_id IS NULL
