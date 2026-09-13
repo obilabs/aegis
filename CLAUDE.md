@@ -1,4 +1,4 @@
-# Aegis Client - AI Agent Instructions
+# Aegis - AI Agent Instructions
 
 **Single-tenant ITSM platform.** One organization per installation.
 
@@ -9,7 +9,7 @@
 > `docs/compliance/legal-review-todo.md` and the openspec archive. Every "see
 > root CLAUDE.md" pointer below means that repo.
 
-## What Client IS
+## What Aegis IS
 
 - Internal IT support for employees
 - External product support for customers (NO billing)
@@ -19,7 +19,7 @@
 - Credential vault (AES-256 encrypted)
 - Time tracking for reporting (export to external billing)
 
-## What Client is NOT
+## What Aegis is NOT
 
 - Billing/invoicing platform (that's aegis-mtp)
 - Multi-tenant platform (that's aegis-mtp)
@@ -523,7 +523,7 @@ about pre-feature installs.
   row is written atomically.
 - Treat `TELEMETRY_ENABLED=false` as binding — it represents the
   operator who deployed the container, beats any in-app setting.
-- Reference [PRINCIPLES.md](../../PRINCIPLES.md) #2 (consent-first
+- Reference `PRINCIPLES.md` #2 in obilabs-platform (consent-first
   telemetry) when reviewing related changes.
 
 ## Cascade revocation (added 2026-07-05)
