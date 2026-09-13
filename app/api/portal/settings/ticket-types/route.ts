@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     const result = await pool.query(
       `SELECT id, name, description, icon, color, default_priority,
-              requires_approval, is_visible, description_template,
+              requires_approval, is_active AS is_visible, description_template,
               required_fields, sla_response_minutes, sla_resolution_minutes,
               display_order, created_at, updated_at
        FROM ticket_types

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         t.created_at,
         t.approved_at,
         CONCAT(req.first_name, ' ', req.last_name) as requester,
-        req.department,
+        COALESCE((SELECT d.name FROM departments d WHERE d.id = req.department_id), req.department_legacy) as department,
         CONCAT(asgn.first_name, ' ', asgn.last_name) as assigned_to
       FROM tickets t
       LEFT JOIN ticket_types tt ON t.type_id = tt.id

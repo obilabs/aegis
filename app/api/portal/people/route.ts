@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
         u.last_name,
         CONCAT(u.first_name, ' ', u.last_name) as name,
         u.email,
-        u.role,
-        u.is_active,
+        ur.name as role,
+        (u.status = 'active') as is_active,
         u.contact_id,
         c.contact_type,
         c.phone as contact_phone,
@@ -34,12 +34,13 @@ export async function GET(request: NextRequest) {
         c.location_id,
         l.name as location_name
       FROM users u
+      LEFT JOIN user_roles ur ON u.role_id = ur.id
       LEFT JOIN contacts c ON u.contact_id = c.id
       LEFT JOIN companies co ON c.company_id = co.id
       LEFT JOIN departments d ON c.department_id = d.id
       LEFT JOIN job_titles jt ON c.job_title_id = jt.id
       LEFT JOIN locations l ON c.location_id = l.id
-      WHERE u.organization_id = $1 AND u.is_active = true
+      WHERE u.organization_id = $1 AND u.status = 'active'
       ORDER BY u.first_name ASC, u.last_name ASC
     `, [orgId])
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
-import { getOrgId } from '@/lib/org'
+import { getOrgId, getUserId } from '@/lib/org'
 
 /**
  * GET /api/portal/dashboard/my-tickets
@@ -14,7 +14,12 @@ export async function GET(request: NextRequest) {
   }
 
   const orgId = await getOrgId()
-  const userId = (session.user as { id: string }).id
+  // App users.id (UUID) resolved from the session email; session.user.id is the
+  // Better Auth id (not a UUID) and made every My Hub widget fail.
+  const userId = await getUserId(session.user.email).catch(() => null)
+  if (!userId) {
+    return NextResponse.json({ error: 'No application user for this session' }, { status: 403 })
+  }
   const userEmail = session.user.email
 
   try {

@@ -18,9 +18,12 @@ export async function GET(request: NextRequest) {
     const orgId = await getOrgId()
     const userId = await getUserId(session.user.email)
 
-    // Find the contact record linked to this user
+    // Find the contact record linked to this user. The link lives on
+    // users.contact_id (contacts has no user_id column).
     const contactResult = await pool.query(
-      'SELECT id FROM contacts WHERE organization_id = $1 AND user_id = $2 LIMIT 1',
+      `SELECT contact_id AS id FROM users
+        WHERE organization_id = $1 AND id = $2 AND contact_id IS NOT NULL
+        LIMIT 1`,
       [orgId, userId]
     )
 

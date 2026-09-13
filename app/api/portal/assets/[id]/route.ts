@@ -27,7 +27,7 @@ export async function GET(
         a.serial_number,
         a.status,
         a.primary_ip,
-        a.mac_address,
+        a.primary_mac AS mac_address,
         a.os,
         a.purchase_date,
         a.warranty_expire,
