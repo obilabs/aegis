@@ -26,6 +26,19 @@ export async function register() {
       console.error('[instrumentation] Failed to start alive ping:', err)
     }
 
+    // First-run setup token: while no organization exists, generate (or load)
+    // the one-time token and print it to the log so the operator can claim the
+    // instance. See lib/first-run-token.ts.
+    try {
+      const { isSetupOpen } = await import('./lib/first-run-guard')
+      if (await isSetupOpen()) {
+        const { ensureSetupToken } = await import('./lib/first-run-token')
+        ensureSetupToken()
+      }
+    } catch (err) {
+      console.error('[instrumentation] Setup token check failed:', err)
+    }
+
     try {
       const { registerTelemetryJob, registerEmbeddingWorker, registerSweepJobs } = await import('./lib/queue')
       const { registerTriageWorker } = await import('./lib/triage-worker')

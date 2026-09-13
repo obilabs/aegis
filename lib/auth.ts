@@ -5,6 +5,7 @@ import { createAuthMiddleware, APIError } from 'better-auth/api'
 import { Pool } from 'pg'
 import { logAuthEvent } from '@/lib/audit'
 import { resolveSecret } from '@/lib/secret-bootstrap'
+import { setupTokenFromHeaders, verifySetupToken } from '@/lib/first-run-token'
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -203,6 +204,20 @@ export const auth = betterAuth({
     // page's create-account link (signup-status) is UX only and never trusted.
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path !== '/sign-up/email') return
+      // First-run claim: while no account exists, the first sign-up must
+      // present the one-time setup token from the server log / data volume
+      // (lib/first-run-token.ts). Stops whoever reaches a fresh instance first
+      // from claiming it.
+      if (await hasNoUsers()) {
+        const presented =
+          setupTokenFromHeaders(ctx.headers) ?? setupTokenFromHeaders(ctx.request?.headers)
+        if (!verifySetupToken(presented)) {
+          throw new APIError('FORBIDDEN', {
+            message:
+              "A valid setup token is required. Find it in the server log: docker compose logs aegis | grep 'setup token'",
+          })
+        }
+      }
       const body = (ctx.body || {}) as Record<string, unknown>
       const email = typeof body.email === 'string' ? body.email : ''
       if (!email || !(await isSelfSignupPermitted(email))) {
@@ -374,6 +389,16 @@ export type User = typeof auth.$Infer.Session.user
 
 // Helper to check if registration is allowed
 // Used by middleware and API routes
+async function hasNoUsers(): Promise<boolean> {
+  try {
+    const result = await pool.query('SELECT COUNT(*) as count FROM "user"')
+    return parseInt(result.rows[0].count, 10) === 0
+  } catch {
+    // Can't tell — treat as first run so the token is still required.
+    return true
+  }
+}
+
 export async function isRegistrationAllowed(): Promise<boolean> {
   if (process.env.ALLOW_REGISTRATION === 'true') {
     return true

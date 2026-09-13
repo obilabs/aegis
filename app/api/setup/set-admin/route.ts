@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
+import { isSetupOpen, requireSetupToken } from '@/lib/first-run-guard'
 
 /**
  * Set the first user as admin during initial setup.
@@ -20,6 +21,16 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // First-run only, and only for whoever holds the setup token.
+    if (!(await isSetupOpen())) {
+      return NextResponse.json(
+        { success: false, error: 'This endpoint only works during initial setup' },
+        { status: 403 }
+      )
+    }
+    const tokenError = requireSetupToken(request)
+    if (tokenError) return tokenError
 
     const body = await request.json()
     const { userId } = body

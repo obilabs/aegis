@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
+import { requireSetupToken } from '@/lib/first-run-guard'
+import { destroySetupToken } from '@/lib/first-run-token'
 import { seedSystemArticles } from '@/lib/seed-articles'
 import { seedFeatureRegistry } from '@/lib/seed-feature-registry'
 import { seedPolicyArticles } from '@/lib/seed-policies'
@@ -32,6 +34,10 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       )
     }
+
+    // Claiming the instance requires the one-time setup token.
+    const tokenError = requireSetupToken(request)
+    if (tokenError) return tokenError
 
     const body = await request.json()
     const { company_name, industry, team_size, primary_use_case, features, telemetry_tier, telemetry_disabled } = body
@@ -66,6 +72,9 @@ export async function POST(request: NextRequest) {
       ]
     )
     const orgId = orgResult.rows[0].id
+    // The organization now exists, so setup is closed: the one-time token has
+    // done its job.
+    destroySetupToken()
 
     // Create ITSM user entry linked to the organization.
     //
