@@ -21,7 +21,7 @@ Aegis is an ITSM (IT Service Management) platform suite following the Aegis mode
 │ • Self-hosted   │ • SaaS platform  │ • Marketing site           │
 │ • One org       │ • MSP portal     │ • Documentation            │
 │ • Full ITSM     │ • Vendor access  │ • Waitlist                 │
-│ • MCP server    │ • API gateway    │ • Credits/Donations        │
+│ • MCP server    │ • API gateway    │ • Credits                  │
 │ • Client owns   │ • Billing        │                            │
 │   all data      │ • Multi-client   │                            │
 └─────────────────┴──────────────────┴────────────────────────────┘
@@ -250,7 +250,7 @@ Public-facing site for Aegis:
 - Marketing pages
 - Documentation
 - Waitlist
-- Credits/donations
+- Credits
 - Support portal
 
 ### Based On

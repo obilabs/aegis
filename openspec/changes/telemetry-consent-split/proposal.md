@@ -126,7 +126,6 @@ work:
 
 - Full opt-in / removing the alive ping (rejected direction).
 - Hardening the ≤3-instance licence check against patching (deprioritized).
-- Donation / sponsorship infrastructure (deprioritized).
 
 ## Files to Modify
 

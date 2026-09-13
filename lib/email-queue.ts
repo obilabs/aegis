@@ -51,7 +51,6 @@ const EMAIL_TYPE_MAP: Record<string, string> = {
   ticket_reply: 'ticket',
   password_reset: 'user',
   welcome: 'user',
-  donation_thanks: 'donation',
   system: 'system',
 }
 

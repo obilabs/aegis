@@ -260,7 +260,7 @@ Priorities: `low` (5d), `medium` (2d), `high` (1d), `urgent` (4h), `critical` (1
 | `components/ui/Button.tsx` | THE button primitive. Variants: primary / secondary / danger / ghost. `whitespace-nowrap` + `flex-shrink-0` baked in — text can't wrap. |
 | `components/ui/Modal.tsx` | THE modal primitive. Top-anchored scroll pattern baked in (no `items-center` escape hatch — that's the cut-off bug). Sub-components: `Modal.Header` / `Modal.Body` / `Modal.Footer`. |
 | `components/ui/Badge.tsx` | THE badge primitive. Semantic tones: brand / blue / amber / red / slate / purple / emerald. |
-| `components/VendorFooter.tsx` | Outbound link footer to apps/web (sponsor / support). Driven by `NEXT_PUBLIC_VENDOR_URL`. Hidden on standalone pages. |
+| `components/VendorFooter.tsx` | Outbound help link to apps/web. No funding or payment prompts (lib/no-funding-asks.test.ts). Driven by `NEXT_PUBLIC_VENDOR_URL`. Hidden on standalone pages. |
 | `middleware.ts` | Route protection and auth |
 
 ## Email — provider abstraction (added 2026-05-13)
@@ -330,7 +330,7 @@ follow-up work. New code MUST use the primitives starting now.
 ## Portal navigation + vendor outbound links (added 2026-06-09)
 
 apps/aegis is the self-hosted ITSM portal. Owner-facing surfaces
-(licensing, donations, marketing pages) live in apps/web at the
+(licensing, marketing pages) live in apps/web at the
 vendor URL — NOT here. To link from apps/aegis to apps/web for
 those concerns, use the `VendorFooter` component already wired into
 `app/portal/layout.tsx`, driven by `NEXT_PUBLIC_VENDOR_URL` (default
@@ -341,8 +341,6 @@ hide the footer entirely on air-gapped installs.
   apps/aegis. The pattern was deleted 2026-06-09.
 - **Don't** add `/portal/instances` — instances belong on apps/web
   (owner's licensing surface). Deleted 2026-06-09.
-- **Don't** add `/portal/donations` — donations belong on apps/web.
-  Deleted 2026-06-09.
 - **Don't** add `/portal/vendors` — vendors were merged into
   `companies` per the people model rework; the vendors entity no
   longer exists as a distinct route. Deleted 2026-06-09.
@@ -616,7 +614,8 @@ pattern cannot recur.
 
 - Add multi-tenant features
 - Add billing/invoicing (MTP scope; route `/portal/billing` was deleted 2026-06-09)
-- Add `/portal/instances` or `/portal/donations` (apps/web territory; routes were deleted 2026-06-09)
+- Add `/portal/instances` (apps/web territory; route deleted 2026-06-09)
+- Add funding, payment or "support us" prompts anywhere in the product (ObiLabs takes none; `lib/no-funding-asks.test.ts` fails the build)
 - Add `/portal/vendors` (vendors merged into companies per people model; route deleted 2026-06-09)
 - Add a Settings landing tile whose href doesn't resolve to a real page.tsx (CI gate catches it)
 - Hardcode the vendor URL — use `NEXT_PUBLIC_VENDOR_URL` via the `VendorFooter` component

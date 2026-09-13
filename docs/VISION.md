@@ -128,7 +128,7 @@
 │  │                    Manages phones/tablets, reports to aegis  │   │
 │  │                                                                     │   │
 │  │   aegis-web ─────► Marketing & Licensing Portal                    │   │
-│  │                    Instance registration, telemetry, donations      │   │
+│  │                    Instance registration, telemetry                 │   │
 │  │                                                                     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
