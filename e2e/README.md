@@ -44,6 +44,7 @@ state saved by earlier ones in `e2e/artifacts/state.json`.
 | `05-companies-contacts-assets` | Create a company, a contact at it and an asset assigned to them; ticket for the contact; link the asset |
 | `06-settings-and-sweep` | AI features off by default and not advertised; page sweep for crashes, 5xx and funding wording; placeholder text reported |
 | `07-access-by-role` | API access per role: end user refused organization records, other people's tickets, staff actions and settings; technician works records but not settings; admin reaches both |
+| `07b-navigation-by-role` | Navigation per role, and restricted pages (settings, staff sections) refusing when the URL is typed |
 | `07-restart-persistence` | `down` (no `-v`) + `up`: rows, attachment bytes, sessions (persisted auth secret) survive; setup stays closed |
 
 ## Artifacts (`e2e/artifacts/`, gitignored)
