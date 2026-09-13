@@ -72,7 +72,8 @@ export default function NewRequestPage() {
         </svg>
         <div>
           <p className="text-sm text-blue-300">
-            Describe what you need below. A service catalog with guided forms is coming soon.
+            Describe what you need below, or pick a ready-made item from the{' '}
+            <Link href="/portal/requests/catalog" className="underline hover:text-blue-200">service catalog</Link>.
           </p>
         </div>
       </div>

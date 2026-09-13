@@ -116,6 +116,9 @@ tiers, no license keys that unlock features, and nothing held back as
 "enterprise" — **Status** is a maturity signal (Stable → Beta → Alpha → Coming
 Soon), not an availability gate.
 
+Not built yet, and not shown in the product: outbound webhooks and SAML/OIDC
+single sign-on (Google sign-in is available).
+
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Ticket Management | Stable | Incidents, requests, tasks, custom statuses, file attachments |
@@ -142,8 +145,6 @@ Soon), not an availability gate.
 | Workspaces | Alpha | Multi-department help desks |
 | Teams & Routing | Alpha | Team-based assignment |
 | Approval Workflows | Alpha | Multi-level change approvals |
-| Webhooks | Coming Soon | External event delivery |
-| SSO (SAML/OIDC) | Coming Soon | SAML/OIDC single sign-on |
 
 ---
 
@@ -239,6 +240,7 @@ setup completes. To choose it yourself — for example in a scripted deploy — 
 |----------|-------------|---------|
 | `PORT` | Host port for web access (change the two URLs below with it) | `8080` |
 | `BIND_HOST` | Interface nginx binds to; `127.0.0.1` behind a local reverse proxy | `0.0.0.0` |
+| `CONTAINER_PREFIX` | Container name prefix; change it (and `PORT`) to run a second stack on one host | `aegis` |
 | `BETTER_AUTH_URL` | Public URL users type; sign-ins from any other origin are refused | `http://localhost:8080` |
 | `NEXT_PUBLIC_APP_URL` | Same as `BETTER_AUTH_URL`; baked in at build time, so rebuild after changing it | `http://localhost:8080` |
 | `TELEMETRY_ENABLED` | `false` disables all outbound telemetry (see above) | *(unset)* |
