@@ -27,8 +27,10 @@ docker-compose.override.yml
 
 # Agent worktrees / local tool state. `.claude/worktrees/*` are nested git
 # repositories — staging them produces the "embedded git repository" warning
-# and commits a gitlink nobody can resolve.
-.claude/
+# and commits a gitlink nobody can resolve. The shared project settings file
+# is the one exception.
+.claude/*
+!.claude/settings.json
 
 # R&D logs (grant docs — local only, per CLAUDE.md)
 .rd_log/

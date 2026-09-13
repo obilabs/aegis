@@ -22,7 +22,8 @@
 --    re-introduces it — regenerate with `--exclude-schema=pgboss` or that bug
 --    comes straight back.
 --
--- 2. It PRE-POPULATES `schema_migrations` with 088-097 at the end. The
+-- 2. It PRE-POPULATES `schema_migrations` with 088-098 at the end (098 is
+--    appended DDL after the dump, schema-qualified). The
 --    entrypoint runs init.sql and THEN the migration loop; without this the
 --    loop would re-apply ten migrations against a schema that already has
 --    everything. Marking them applied is what makes "fresh install = one flat
@@ -24683,6 +24684,31 @@ INSERT INTO public.ticket_status_templates (id, name, color, icon, description, 
 
 
 --
+-- Folded in after the 2026-08-17 dump (schema-qualified: pg_dump resets
+-- search_path to ''). Migration 098: kb_article_feedback, used by the public
+-- KB "Was this helpful?" endpoint.
+--
+
+CREATE TABLE IF NOT EXISTS public.kb_article_feedback (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    article_id uuid NOT NULL REFERENCES public.kb_articles(id) ON DELETE CASCADE,
+    session_id character varying(64) NOT NULL,
+    is_helpful boolean NOT NULL,
+    feedback_text text,
+    feedback_category character varying(50),
+    source character varying(30) DEFAULT 'public_kb'::character varying NOT NULL,
+    ip_address character varying(45),
+    user_agent text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+-- One vote per anonymous session per article (the route checks first; this
+-- makes the rule hold under concurrent submissions too).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_article_feedback_article_session
+    ON public.kb_article_feedback USING btree (article_id, session_id);
+
+
+--
 -- Migration ledger: mark every migration folded into this file as applied so
 -- the entrypoint's loop skips them. NOTE the explicit `public.` qualification:
 -- pg_dump ends by resetting search_path to '', so unqualified DDL appended
@@ -24705,5 +24731,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('094_telemetry_consent'),
     ('095_kb_render_and_sources'),
     ('096_kb_categories_sort_order'),
-    ('097_mtp_write_provenance')
+    ('097_mtp_write_provenance'),
+    ('098_kb_article_feedback')
 ON CONFLICT (version) DO NOTHING;
