@@ -2,6 +2,7 @@
  * KB Contributor API - Single Contributor Operations
  */
 
+import { requireStaff } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
@@ -10,6 +11,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session?.user) {

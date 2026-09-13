@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireTicketAccess } from '@/lib/access'
 import { getSlaData, computeSlaActiveSeconds, getSlaRemaining, getSlaHistory } from '@/lib/sla'
 import { queryOne } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
@@ -21,6 +22,8 @@ export async function GET(
     }
 
     const { id } = await params
+    const guard = await requireTicketAccess(request, id)
+    if (guard instanceof NextResponse) return guard
 
     // Verify ticket exists and user has access
     const ticket = await queryOne<{ id: string }>(

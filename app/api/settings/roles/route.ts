@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireStaff } from '@/lib/access'
 import { query, pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { isAdmin } from '@/lib/permissions'
@@ -22,6 +23,8 @@ const CreateRoleSchema = z.object({
  * GET /api/settings/roles — list all roles with user counts
  */
 export async function GET(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

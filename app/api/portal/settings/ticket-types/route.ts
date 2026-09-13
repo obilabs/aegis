@@ -1,9 +1,12 @@
 import { auth } from '@/lib/auth'
+import { requireCapability } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrgId } from '@/lib/org'
 
 export async function GET(request: NextRequest) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {
