@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireUser, allows } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { z } from 'zod'
@@ -68,10 +68,8 @@ const QUERIES: Record<string, { sql: string; searchFields: string[] }> = {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: request.headers })
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const guard = await requireUser(request)
+  if (guard instanceof NextResponse) return guard
 
   const orgId = await getOrgId()
   const params = Object.fromEntries(request.nextUrl.searchParams)
@@ -82,6 +80,13 @@ export async function GET(request: NextRequest) {
   }
 
   const { type, q, exclude, limit } = parsed.data
+  // End users may only look up knowledge base articles they could read;
+  // contacts, assets, credentials, documents, services and other people's
+  // tickets are staff data.
+  const isStaff = allows(guard.perms, { level: 'staff' })
+  if (!isStaff && type !== 'kb_article') {
+    return NextResponse.json({ error: 'Staff access required' }, { status: 403 })
+  }
   const queryDef = QUERIES[type]
 
   if (!queryDef) {
@@ -90,6 +95,7 @@ export async function GET(request: NextRequest) {
 
   try {
     let sql = queryDef.sql
+    if (!isStaff) sql += ` AND a.visibility IN ('public', 'authenticated')`
     const queryParams: (string | number)[] = [orgId]
     let paramIndex = 2
 

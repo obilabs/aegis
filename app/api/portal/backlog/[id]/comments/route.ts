@@ -1,4 +1,5 @@
 import { toSafeHtml } from '@/lib/article-render'
+import { requireStaff } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
@@ -7,6 +8,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {

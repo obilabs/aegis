@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { getOrgId, getUserId } from '@/lib/org'
@@ -37,6 +38,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

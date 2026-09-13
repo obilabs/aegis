@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireCapability } from '@/lib/access'
 import { pool, query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
@@ -11,6 +12,8 @@ import { z } from 'zod'
  * Returns active and upcoming delegations.
  */
 export async function GET(request: Request) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {
@@ -94,6 +97,8 @@ const CreateDelegationSchema = z.object({
  * same org, valid date range, no overlapping active delegations.
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {

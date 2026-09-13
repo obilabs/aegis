@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireStaff } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,6 +10,8 @@ const quickCreateSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {

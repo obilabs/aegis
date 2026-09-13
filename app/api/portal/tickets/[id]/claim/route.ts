@@ -1,4 +1,5 @@
 import { pool, queryOne } from '@/lib/db'
+import { requireTicketAccess } from '@/lib/access'
 import { logTicketFieldChange } from '@/lib/ticket-audit'
 import { getAuthContext } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
@@ -18,6 +19,8 @@ export async function POST(
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { session, userId, orgId } = ctx
     const { id: ticketId } = await params
+    const guard = await requireTicketAccess(request, ticketId, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
 
     // Look up the ITSM user
     const itsmUser = await queryOne<{ id: string; first_name: string; last_name: string }>(
