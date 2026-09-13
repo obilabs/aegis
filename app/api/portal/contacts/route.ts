@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { requireStaff } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { logAudit, getClientIp } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
@@ -23,6 +24,8 @@ const createContactSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {
@@ -73,6 +76,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {

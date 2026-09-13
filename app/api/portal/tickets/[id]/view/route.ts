@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireTicketAccess } from '@/lib/access'
 import { pool, queryOne } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -23,6 +24,8 @@ export async function POST(
     }
 
     const { id } = await params
+    const guard = await requireTicketAccess(request, id, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
 
     // Get the ITSM user id (not the auth user id)
     const itsmUser = await queryOne<{ id: string; organization_id: string }>(

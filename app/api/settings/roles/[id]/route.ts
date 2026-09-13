@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireStaff } from '@/lib/access'
 import { query, queryOne, pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { isAdmin } from '@/lib/permissions'
@@ -46,6 +47,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

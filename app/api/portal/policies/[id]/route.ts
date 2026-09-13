@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff } from '@/lib/access'
 import { queryOne, query } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 
@@ -6,6 +7,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const ctx = await getAuthContext(request)
   if (!ctx) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

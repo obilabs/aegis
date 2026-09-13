@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { requireStaff } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
 import { hasCapabilityOrAdmin } from '@/lib/permissions'
@@ -7,6 +8,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {

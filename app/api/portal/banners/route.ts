@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCapability } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { pool, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -60,6 +61,8 @@ export async function GET(request: NextRequest) {
  * Dismiss a banner by ID.
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
