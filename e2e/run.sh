@@ -38,6 +38,7 @@ sed -i.bak \
   "$ENV_FILE"
 rm -f "$ENV_FILE.bak"
 echo "TELEMETRY_ENABLED=false" >> "$ENV_FILE"
+echo "CONTAINER_PREFIX=aegis-e2e" >> "$ENV_FILE"
 
 rm -rf "$ART"
 mkdir -p "$ART"
