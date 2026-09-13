@@ -1,0 +1,65 @@
+name: E2E walk-through
+
+# Builds the app image from the PR, starts a fresh compose stack exactly as a
+# self-hoster would (env.example + the three required secrets), and walks the
+# product in a real browser: setup token + wizard, users and roles, tickets and
+# attachments, knowledge base, companies/contacts/assets, settings, and a stack
+# restart. See e2e/README.md. Same script locally: bash e2e/run.sh
+#
+# Heavier than ci.yml (image build + full stack), so it runs on PRs that touch
+# the app, the image or the suite, and on demand.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'middleware.ts'
+      - 'instrumentation.ts'
+      - 'database/**'
+      - 'nginx/**'
+      - 'scripts/seed-admin.mjs'
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - 'docker-compose.yml'
+      - 'env.example'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'next.config.js'
+      - 'e2e/**'
+      - '.github/workflows/e2e.yml'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  walkthrough:
+    name: Browser walk-through (fresh install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - name: Run walk-through
+        env:
+          CI: 'true'
+        run: bash e2e/run.sh
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-artifacts
+          path: e2e/artifacts
+          if-no-files-found: ignore
+          retention-days: 7

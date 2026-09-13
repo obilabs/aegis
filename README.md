@@ -356,6 +356,7 @@ pnpm dev
 
 pnpm test                 # unit tests
 pnpm exec tsc --noEmit    # type check
+bash e2e/run.sh           # browser walk-through of a fresh install (Docker; see e2e/README.md)
 ```
 
 **Demo data:** TODO — there is no maintained demo dataset yet.
