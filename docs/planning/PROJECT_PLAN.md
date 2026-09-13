@@ -37,7 +37,7 @@ This ensures:
 cp -r Aegis-web aegis
 # Update branding, remove Aegis-specific code
 # Keep: auth system, docker setup, database patterns
-# Remove: Google Workspace, instances, donations
+# Remove: Google Workspace, instances
 ```
 
 **Deliverables:**

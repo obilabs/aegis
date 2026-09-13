@@ -63,7 +63,7 @@ export interface EmailJob {
   html: string
   text?: string
   // Metadata for tracking
-  type: 'ticket_notification' | 'ticket_reply' | 'password_reset' | 'welcome' | 'donation_thanks' | 'system'
+  type: 'ticket_notification' | 'ticket_reply' | 'password_reset' | 'welcome' | 'system'
   relatedId?: string // ticket_id, user_id, etc.
   priority?: 'low' | 'normal' | 'high' | 'critical'
   /**

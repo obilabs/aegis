@@ -14,7 +14,6 @@ const footerLinks = {
   ],
   Company: [
     { name: 'Waitlist', href: '/waitlist' },
-    { name: 'Donate', href: '/donate' },
     { name: 'Credits', href: '/credits' },
     { name: 'Insights', href: '/insights' },
   ],
