@@ -23,8 +23,13 @@ test('admin publishes a public article; an anonymous visitor reads it and leaves
   await page.getByRole('button', { name: 'Publish' }).click()
   const res = await saved
   expect(res.status(), await res.text()).toBeLessThan(300)
-  await page.waitForURL(/\/portal\/kb\//, { timeout: 30_000 })
-  const slug = (await page.locator('#slug').count()) ? await page.locator('#slug').inputValue() : sql(`SELECT slug FROM kb_articles WHERE title = '${title}'`)
+  // The editor leaves /portal/kb/new for the article page, or the KB home when
+  // the article has no category.
+  await page.waitForURL((url) => url.pathname.startsWith('/portal/kb') && !url.pathname.endsWith('/new'), {
+    timeout: 30_000,
+    waitUntil: 'commit',
+  })
+  const slug = sql(`SELECT slug FROM kb_articles WHERE title = '${title}'`)
   expect(slug).toBeTruthy()
   expect(sql(`SELECT status || '/' || visibility FROM kb_articles WHERE slug = '${slug}'`)).toBe('published/public')
   saveState({ kbSlug: slug, kbTitle: title })
