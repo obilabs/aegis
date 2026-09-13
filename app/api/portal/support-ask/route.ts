@@ -9,25 +9,17 @@
  * who had already donated were still being asked, on every page, forever. That is
  * the worst possible audience for an ask.
  *
- * The signal to stop asking already existed: the licence heartbeat carries
- * `plan`, which can be 'donor'. `getLicensePlan()` is documented as
- * "display/attribution only, NEVER gating" — using it to decide whether to render
- * a link is display, so it stays inside that contract. Nothing here gates a
- * feature, and a stale or unknown plan simply means we do not ask.
+ * Nothing here gates a feature and nothing reads the licence plan: the ask
+ * depends only on the caller's role and on value delivered.
  *
  * THE DECISION LIVES HERE, NOT IN THE COMPONENT.
- * The plan is server-side state and the role check needs the database, so the
- * component stays dumb: it renders what this says.
- *
- * NOTE ON GRANULARITY: a licence plan is per-INSTALL, not per-person. This can
- * tell you "this organisation supports the project", never "this admin does".
- * Good enough to stop asking; not enough to personalise beyond the org.
+ * The role check needs the database, so the component stays dumb: it renders
+ * what this says.
  */
 
 import { pool } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { hasCapabilityOrAdmin } from '@/lib/permissions'
-import { getLicensePlan } from '@/lib/license-heartbeat'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -56,12 +48,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ show: false, reason: 'not-an-admin' })
     }
 
-    const plan = getLicensePlan()
-    if (plan === 'donor') {
-      // Already supporting. Say thank you; never ask again while it is current.
-      return NextResponse.json({ show: false, reason: 'current-donor', plan })
-    }
-
     const orgId = ctx.orgId
 
     const stats = await pool.query<{ resolved: string; install_age_days: string }>(
@@ -86,21 +72,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // A previous supporter whose licence is no longer 'donor'. Do NOT resume the
-    // cold ask — treating a past supporter like a stranger is what stops them
-    // giving again. Acknowledge first, then ask.
-    //
-    // Read from settings->'supporter', written by the licence heartbeat whenever
-    // it sees a donor plan. This branch was originally written against a
-    // `last_plan` column that does not exist, so it could never have fired —
-    // dead code that looks like a feature.
-    const supporter = await pool.query<{ last_donor_at: string | null }>(
-      `SELECT settings->'supporter'->>'last_donor_at' AS last_donor_at
-         FROM organizations WHERE id = $1`,
-      [orgId],
-    )
-    const wasDonor = Boolean(supporter.rows[0]?.last_donor_at)
-
     // WHICH threshold opened the ask decides what we can honestly claim here.
     // The gate above passes on tickets OR age, so an install that has been
     // running a month and resolved nothing reaches this line — and telling that
@@ -115,7 +86,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       show: true,
-      tone: wasDonor ? 'returning' : 'first',
       basis,
       resolved,
       ageDays,
@@ -131,14 +101,11 @@ export async function GET(request: NextRequest) {
       // actually did the work.
       //
       // The subject of these sentences is always the customer, never Aegis.
-      message: wasDonor
-        ? 'You have supported ObiLabs before — thank you. If Aegis is still ' +
-          'useful, please continue to support us to keep making it better.'
-        : basis === 'tickets'
-          ? `Your team has resolved ${resolved} tickets with Aegis. If it is ` +
-            'useful, please support us to keep making Aegis better.'
-          : `Your team has been running Aegis for ${ageDays} days. If it is ` +
-            'useful, please support us to keep making Aegis better.',
+      message: basis === 'tickets'
+        ? `Your team has resolved ${resolved} tickets with Aegis. If it is ` +
+          'useful, please support us to keep making Aegis better.'
+        : `Your team has been running Aegis for ${ageDays} days. If it is ` +
+          'useful, please support us to keep making Aegis better.',
     })
   } catch (error) {
     // Never let this break a page. An ask that 500s is worse than no ask.

@@ -3,8 +3,8 @@
  *
  * Aegis is fully open-source and community-licensed: NOTHING is gated when
  * the operator does not pay (only the MSP portal, MTP, gates on payment). So
- * this module is a HEARTBEAT + donor/supporter attribution that NEVER blocks
- * or degrades the product — the same fail-open posture Helios ships. It:
+ * this module is a liveness HEARTBEAT that NEVER blocks or degrades the
+ * product — the same fail-open posture Helios ships. It:
  *
  *   - routes the actual check through `validateLicense()` (the one sanctioned
  *     path to the control plane — no more hand-rolled fetch that only looked
@@ -48,9 +48,10 @@ const APP_VERSION =
 
 // Community feature floor. Aegis never gates on the licence — every install
 // has the full product — so the floor is empty and the control plane's
-// `features` map (returned on a `valid` donor/supporter answer) is overlay
-// for DISPLAY/attribution only (e.g. a future supporter badge). Nothing in
-// the app may branch product behaviour on these values.
+// `features` map (returned on a `valid` answer) is overlay for DISPLAY only.
+// The plan key is never interpreted — any plan, including one this build does
+// not know, gets this same floor. Nothing in the app may branch product
+// behaviour on these values.
 const COMMUNITY_FEATURES: Record<string, boolean> = {}
 
 /**
@@ -113,29 +114,6 @@ async function storeSnapshot(orgId: string, snapshot: CachedLicenseSnapshot): Pr
         WHERE id = $2`,
       [JSON.stringify(snapshot), orgId],
     )
-
-    // Remember that this organisation HAS supported the project, separately from
-    // whether it currently does.
-    //
-    // The snapshot above is CURRENT state; it cannot answer "were they ever a
-    // donor?" once a plan lapses. Without that, a past supporter is
-    // indistinguishable from a stranger and gets the cold ask again — which is
-    // exactly what stops people giving a second time.
-    //
-    // Written into the existing settings JSONB, so no migration. Records THAT
-    // they supported and when it was last seen; never that they stopped.
-    if (snapshot.plan === 'donor') {
-      await query(
-        `UPDATE organizations
-            SET settings = jsonb_set(
-                  COALESCE(settings, '{}'::jsonb),
-                  '{supporter}',
-                  jsonb_build_object('last_donor_at', to_jsonb(NOW()))
-                )
-          WHERE id = $1`,
-        [orgId],
-      )
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.warn(`[license-heartbeat] could not persist licence snapshot: ${message}`)
@@ -268,7 +246,7 @@ export function startLicenseHeartbeat(): void {
 // Null-safe read accessors — display/attribution only, NEVER gating.
 // ---------------------------------------------------------------------------
 
-/** Current plan (donor/community/…), or 'community' when unknown. Never gates. */
+/** Current plan key as reported, or 'community' when none. Display only; never gates. */
 export function getLicensePlan(): string {
   return _lastResult?.plan ?? 'community'
 }
@@ -276,7 +254,7 @@ export function getLicensePlan(): string {
 /**
  * Feature map for display. Null-safe: community floor overlaid with the
  * control plane's `features` when we have a valid result. Aegis does not gate
- * on any of these — they exist for parity + future UI (e.g. supporter badge).
+ * on any of these — they exist for parity + future UI (e.g. a licence badge).
  */
 export function getLicenseFeatures(): Record<string, boolean> {
   const fromCp = _lastResult?.features ?? null
@@ -294,7 +272,7 @@ export function hasLicenseFeature(feature: string): boolean {
   return getLicenseFeatures()[feature] ?? false
 }
 
-/** True when the control plane last confirmed a valid (donor/supporter) licence. */
+/** True when the control plane last confirmed a valid licence. */
 export function isLicensed(): boolean {
   return _lastResult?.state === 'valid'
 }
