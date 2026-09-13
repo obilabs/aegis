@@ -57,10 +57,10 @@ describe('assertSafeFetchTarget (IP-literal hosts, no DNS)', () => {
 
   it('rejects a private IP for a non-local provider but allows it for a local one', async () => {
     await expect(
-      assertSafeFetchTarget('http://172.25.10.11:11434/api/tags', { allowPrivate: false }),
+      assertSafeFetchTarget('http://192.168.1.20:11434/api/tags', { allowPrivate: false }),
     ).rejects.toThrow(/private-172\.16\/12/)
     await expect(
-      assertSafeFetchTarget('http://172.25.10.11:11434/api/tags', { allowPrivate: true }),
+      assertSafeFetchTarget('http://192.168.1.20:11434/api/tags', { allowPrivate: true }),
     ).resolves.toBeUndefined()
   })
 
