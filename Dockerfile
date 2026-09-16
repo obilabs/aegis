@@ -9,7 +9,7 @@
 #   2. Copy source, build Next.js standalone output (flat: .next/standalone/server.js)
 #   3. Runner stage copies the standalone output + DB schema/migrations
 
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ COPY . .
 RUN pnpm build
 
 # ==============================================================================
-FROM node:20-alpine AS runner
+FROM node:26-alpine AS runner
 
 WORKDIR /app
 
