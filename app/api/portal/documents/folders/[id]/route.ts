@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireStaff } from '@/lib/access'
+import { folderAccess, folderAccessFilter } from '@/lib/folder-access'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -17,6 +18,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Folder administration, like this route's PUT and DELETE: it reports the
+  // restricted flag and the folder's access-control rows, which end users have
+  // no use for. Staff only, and a restricted folder still needs a grant.
+  const ctx = await requireStaff(request)
+  if (ctx instanceof NextResponse) return ctx
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -25,6 +31,10 @@ export async function GET(
   const orgId = await getOrgId()
   const { id } = await params
 
+  const access = folderAccess(ctx.perms, session.user.role)
+  // Same predicate, same $3, for both the folder itself and its children.
+  const scope = folderAccessFilter(access, 3, { folderId: 'f.id' })
+
   try {
     const folder = await queryOne(
       `SELECT f.id, f.name, f.description, f.parent_id, f.icon, f.display_order,
@@ -32,19 +42,21 @@ export async function GET(
         COUNT(d.id)::int AS document_count
        FROM folders f
        LEFT JOIN documents d ON d.folder_id = f.id AND d.is_deleted = false
-       WHERE f.id = $1 AND f.organization_id = $2
+       WHERE f.id = $1 AND f.organization_id = $2 ${scope.clause}
        GROUP BY f.id`,
-      [id, orgId]
+      [id, orgId, ...scope.params]
     )
 
     if (!folder) {
       return NextResponse.json({ error: 'Folder not found' }, { status: 404 })
     }
 
-    // Get child folders
+    // Get child folders (restricted children need a grant too)
     const children = await query(
-      `SELECT id, name, icon FROM folders WHERE parent_id = $1 AND organization_id = $2 ORDER BY display_order, name`,
-      [id, orgId]
+      `SELECT f.id, f.name, f.icon FROM folders f
+       WHERE f.parent_id = $1 AND f.organization_id = $2 ${scope.clause}
+       ORDER BY f.display_order, f.name`,
+      [id, orgId, ...scope.params]
     )
 
     // Get permissions if restricted
