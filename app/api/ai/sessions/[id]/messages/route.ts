@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isStaffRequest, isStaffIdentity } from '@/lib/access'
 import { query, queryOne } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { validateApiRequest } from '@/lib/api-auth'
@@ -90,10 +91,9 @@ export async function GET(
     if (!isOwner) {
       let isAdminOrTech = false
       if (authCtx) {
-        isAdminOrTech = ['admin', 'technician'].includes(authCtx.session.user.role || '')
+        isAdminOrTech = await isStaffRequest(request)
       } else {
-        const userRow = await queryOne<{ role: string }>('SELECT role FROM "user" WHERE id = $1', [userId])
-        isAdminOrTech = ['admin', 'technician'].includes(userRow?.role || '')
+        isAdminOrTech = await isStaffIdentity(userId)
       }
 
       if (!isAdminOrTech) {

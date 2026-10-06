@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
-import { getTicketAccessFilter } from '@/lib/permissions'
+import { getTicketAccessFilter, getUserPermissions } from '@/lib/permissions'
 import { logAudit, getClientIp } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
@@ -185,10 +185,13 @@ export async function POST(request: NextRequest) {
 
     const typeName = type || 'incident'
 
-    // Role check: Change Requests and Problems are tech/admin only
+    // Role check: Change Requests and Problems are staff only. Uses the
+    // application role (ticket_access/admin_access), not the Better Auth
+    // session role, which is only ever 'user' or 'admin' and so refused every
+    // technician.
     if (typeName === 'change' || typeName === 'problem') {
-      const userRole = session.user.role
-      if (!userRole || !['admin', 'technician', 'helpdesk'].includes(userRole)) {
+      const perms = await getUserPermissions(userId)
+      if (!perms.adminAccess && perms.ticketAccess === 'own') {
         return NextResponse.json(
           { error: 'Only technicians and administrators can create this ticket type' },
           { status: 403 }

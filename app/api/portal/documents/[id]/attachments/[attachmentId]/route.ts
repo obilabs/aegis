@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff } from '@/lib/access'
+import { requireStaff, requireUser } from '@/lib/access'
+import { folderAccess, folderAccessFilter } from '@/lib/folder-access'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -9,6 +10,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string; attachmentId: string }> }
 ) {
+  const ctx = await requireUser(_request)
+  if (ctx instanceof NextResponse) return ctx
   const session = await auth.api.getSession({ headers: _request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -18,26 +21,17 @@ export async function GET(
   const { id, attachmentId } = await params
 
   // RBAC read scoping (audit 2026-07-23): gate the attachment download by the
-  // PARENT document's folder permissions (same predicate as the document read
-  // + LIST). Inaccessible → 404 (never leak existence).
-  const userRole = session.user.role || 'user'
-  const folderAccess = userRole !== 'admin'
-    ? `AND (
-        d.folder_id IS NULL
-        OR f.is_restricted = false
-        OR EXISTS (
-          SELECT 1 FROM folder_permissions fp
-          WHERE fp.folder_id = d.folder_id AND fp.role = $4
-        )
-      )`
-    : ''
+  // PARENT document's folder permissions (the shared predicate in
+  // lib/folder-access). Inaccessible → 404 (never leak existence).
+  const access = folderAccess(ctx.perms, session.user.role)
+  const folder = folderAccessFilter(access, 4, { folderId: 'd.folder_id', nullable: true })
   const attachment = await queryOne(
     `SELECT da.storage_key, da.file_name, da.file_type
      FROM document_attachments da
      JOIN documents d ON da.document_id = d.id
      LEFT JOIN folders f ON d.folder_id = f.id
-     WHERE da.id = $1 AND da.document_id = $2 AND da.organization_id = $3 AND d.is_deleted = false ${folderAccess}`,
-    userRole !== 'admin' ? [attachmentId, id, orgId, userRole] : [attachmentId, id, orgId]
+     WHERE da.id = $1 AND da.document_id = $2 AND da.organization_id = $3 AND d.is_deleted = false ${folder.clause}`,
+    [attachmentId, id, orgId, ...folder.params]
   )
 
   if (!attachment) {

@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 
@@ -17,7 +18,7 @@ export async function PUT(
     }
 
     // Check if user is admin
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
@@ -82,7 +83,7 @@ export async function DELETE(
     }
 
     // Check if user is admin
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 

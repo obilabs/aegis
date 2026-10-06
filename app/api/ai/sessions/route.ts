@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest, isAdminIdentity } from '@/lib/access'
 import { query, queryOne } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { validateApiRequest } from '@/lib/api-auth'
@@ -59,10 +60,9 @@ export async function GET(request: NextRequest) {
     // Check if user is admin
     let isAdmin = false
     if (authCtx) {
-      isAdmin = authCtx.session.user.role === 'admin'
+      isAdmin = await isAdminRequest(request)
     } else {
-      const userRow = await queryOne<{ role: string }>('SELECT role FROM "user" WHERE id = $1', [userId])
-      isAdmin = userRow?.role === 'admin'
+      isAdmin = await isAdminIdentity(userId)
     }
 
     // Parse optional query params

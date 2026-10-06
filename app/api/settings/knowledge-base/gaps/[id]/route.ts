@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireCapability } from '@/lib/access'
+import { requireCapability, requestAllows } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -31,7 +31,7 @@ export async function PATCH(
     const { id: gapId } = await params
 
     // Check admin or helpdesk role
-    if (!session.user.role || !['admin', 'helpdesk'].includes(session.user.role)) {
+    if (!(await requestAllows(request, { capability: 'triage' }))) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
 

@@ -22,6 +22,7 @@ const API = join(ROOT, 'app', 'api')
 
 const GUARDS = [
   /\brequireUser\(/,
+  /\bfolderAccessFilter\(/,
   /\brequireStaff\(/,
   /\brequireCapability\(/,
   /\brequireTicketAccess\(/,
@@ -34,9 +35,11 @@ const GUARDS = [
   /\bgetTicketAccessFilter\(/,
   /\bfindAccessibleTicket\(/,
   /\bgetUserPermissions\(/,
-  // Better Auth role check used by the older admin-only settings routes
-  /\.role\s*[!=]==\s*'admin'/,
-  /\brole\s*[!=]==\s*'admin'/,
+  /\brequestAllows\(/,
+  /\bisAdminRequest\(/,
+  /\bisStaffRequest\(/,
+  /\bisAdminIdentity\(/,
+  /\bisStaffIdentity\(/,
 ]
 
 type Reason = string
@@ -58,7 +61,6 @@ const ALLOWED: Record<string, Reason> = {
 
   // ---- any signed-in user; rows limited to the caller ----
   'ai/chat/suggestions GET': "prompt suggestions from the caller's own tickets and public articles",
-  'ai/sessions/[id]/messages GET': 'session owner, or admin/technician, checked in the handler',
   'ai/escalation-summary POST': "summarises the caller's own chat transcript from the request body",
   'features GET': 'feature flag states, used to render navigation',
   'portal/ai-disclaimer GET': 'static disclaimer text',
@@ -75,12 +77,6 @@ const ALLOWED: Record<string, Reason> = {
   'portal/dashboard/preference GET': "caller's own dashboard preference",
   'portal/dashboard/preference POST': "caller's own dashboard preference",
   'portal/dashboard/training-progress GET': "caller's own training progress",
-  'portal/documents GET': 'folder permissions applied in the query',
-  'portal/documents/[id] GET': 'folder permissions applied in the query',
-  'portal/documents/[id]/attachments GET': 'parent document visibility checked in the query',
-  'portal/documents/[id]/attachments/[attachmentId] GET': 'folder permissions applied in the query',
-  'portal/documents/folders GET': 'folder list; restricted folders filtered by role',
-  'portal/documents/folders/[id] GET': 'folder permissions applied in the query',
   'portal/documents/templates GET': 'document templates',
   'portal/kb/[slug]/acknowledge POST': 'caller acknowledges a policy for themselves',
   'portal/kb/[slug]/acknowledgment-status GET': "caller's own acknowledgment",
@@ -144,6 +140,54 @@ function analyze(route: string, src: string): Array<{ key: string; guarded: bool
   })
 }
 
+/**
+ * Line numbers (1-based) on which a source decides admin/staff access from the
+ * Better Auth identity role. Catches the role read inline AND through a local
+ * it was bound to, which is how `const userRole = session.user.role` followed
+ * by `includes(userRole)` went unnoticed.
+ */
+export function baRoleDecisions(src: string): number[] {
+  const lines = src.split(/\r?\n/)
+
+  // Locals bound to the Better Auth role, however indirectly:
+  //   const userRole = session.user.role
+  //   const role = isAdmin ? 'admin' : (session.user.role || 'user')
+  //   const { role } = session.user
+  const tainted = new Set<string>()
+  for (const line of lines) {
+    const assigned = line.match(/(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*[^=\n]*\buser\.role\b/)
+    if (assigned) tainted.add(assigned[1])
+    const reassigned = line.match(/^\s*(\w+)\s*=\s*[^=\n]*\buser\.role\b/)
+    if (reassigned) tainted.add(reassigned[1])
+    const destructured = line.match(/(?:const|let|var)\s*\{([^}]*)\}\s*=\s*[\w.]*\buser\b\s*$/)
+    if (destructured && /\brole\b/.test(destructured[1])) tainted.add('role')
+  }
+
+  // The role used as a decision, or read straight out of the Better Auth table.
+  const direct =
+    /\buser\.role\s*[!=]==|[!=]==\s*[\w.]*\buser\.role\b|\.includes\(\s*[\w.]*\buser\.role\s*\)|SELECT\s+role\s+FROM\s+"user"/
+
+  const decides = (name: string) =>
+    new RegExp(
+      String.raw`(\b${name}\s*[!=]==)|([!=]==\s*${name}\b)|(\.includes\(\s*${name}\s*\))|(!\s*${name}\s*[|)])`,
+    )
+
+  const hits: number[] = []
+  lines.forEach((line, i) => {
+    if (direct.test(line)) {
+      hits.push(i + 1)
+      return
+    }
+    for (const name of tainted) {
+      if (decides(name).test(line)) {
+        hits.push(i + 1)
+        return
+      }
+    }
+  })
+  return hits
+}
+
 describe('API route access checks', () => {
   const all = routeFiles(API).flatMap(handlers)
 
@@ -173,6 +217,61 @@ describe('API route access checks', () => {
       { key: 'x GET', guarded: false },
       { key: 'x POST', guarded: true },
     ])
+  })
+
+  it('no route decides admin or staff access from the Better Auth role', () => {
+    // session.user.role / "user".role is 'admin' only for the account created
+    // at setup; an administrator granted the role later would be refused.
+    // Use requireStaff / requestAllows / isAdminRequest (lib/access.ts), which
+    // read the application role.
+    const hits = routeFiles(API).flatMap((file) => {
+      const rel = relative(ROOT, file).split(sep).join('/')
+      const src = readFileSync(file, 'utf8')
+      const lines = src.split(/\r?\n/)
+      return baRoleDecisions(src).map((n) => `${rel}:${n}: ${lines[n - 1].trim()}`)
+    })
+    expect(hits).toEqual([])
+  })
+
+  it('catches a Better Auth role decision taken through a local (control)', () => {
+    // The first version of the check above matched only a direct comparison, so
+    // `const userRole = session.user.role` followed by `includes(userRole)`
+    // slipped past it. Every shape below must be caught.
+    expect(baRoleDecisions("  if (session.user.role !== 'admin') return forbidden()")).toEqual([1])
+
+    const viaLocal = [
+      'export async function POST(request) {',
+      '  const userRole = session.user.role',
+      "  if (!userRole || !['admin', 'technician', 'helpdesk'].includes(userRole)) {",
+      '    return forbidden()',
+      '  }',
+      '}',
+    ].join('\n')
+    expect(baRoleDecisions(viaLocal), 'assigned to a local, then tested').toEqual([3])
+
+    const viaTernary = [
+      "  const role = isAdmin ? 'admin' : (session.user.role || 'user')",
+      "  if (role !== 'admin') return forbidden()",
+    ].join('\n')
+    expect(baRoleDecisions(viaTernary), 'bound through a ternary').toEqual([2])
+
+    const viaDestructure = [
+      '  const { role } = session.user',
+      "  if (['admin'].includes(role)) return ok()",
+    ].join('\n')
+    expect(baRoleDecisions(viaDestructure), 'destructured').toEqual([2])
+
+    // Reading the Better Auth role for something that is not an access decision
+    // — here the string matched against folder_permissions.role — is allowed,
+    // and so is every application-role check.
+    const allowed = [
+      '  const access = folderAccess(ctx.perms, session.user.role)',
+      "  if (!allows(ctx.perms, { level: 'staff' })) return forbidden()",
+      "  const chat = messages.filter((m) => m.role === 'user')",
+      '  const perms = await getUserPermissions(userId)',
+      "  if (!perms.adminAccess && perms.ticketAccess === 'own') return forbidden()",
+    ].join('\n')
+    expect(baRoleDecisions(allowed), 'no false positives').toEqual([])
   })
 
   it('the allow list has no stale entries', () => {
