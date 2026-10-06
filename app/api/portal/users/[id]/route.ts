@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { getOrgId, getAuthContext } from '@/lib/org'
 import { hasCapabilityOrAdmin, isAdmin } from '@/lib/permissions'
-import { decidePrivilegedUpdate, lookupRole, userHasAdminRole } from '@/lib/role-grants'
+import { decideLastAdmin, decidePrivilegedUpdate, lookupRole, userHasAdminRole } from '@/lib/role-grants'
 import { logAudit, getClientIp } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -197,9 +197,8 @@ export async function PATCH(
     updates.push(`updated_at = NOW()`)
     values.push(id, orgId)
 
-    // Last-admin guard (PRINCIPLES.md: never lock out administration). Refuse
-    // to deactivate or demote the FINAL user with admin access. Recovery from a
-    // zero-admin state is out-of-band (setup wizard / DB), never this endpoint.
+    // Last-admin guard — the decision lives in lib/role-grants.ts with the rest
+    // of the role-grant policy; this route only resolves the facts.
     const willDeactivate = data.status !== undefined && data.status !== 'active'
     const willChangeRole = data.role_id !== undefined
     if (willDeactivate || willChangeRole) {
@@ -210,23 +209,26 @@ export async function PATCH(
         [id, orgId],
       )
       const target = targetRes.rows[0]
-      const targetIsActiveAdmin = target?.admin_access === true && target?.status === 'active'
-      const staysAdmin = willChangeRole ? newRoleIsAdmin : target?.admin_access === true
-      const wouldLoseAdmin = targetIsActiveAdmin && (willDeactivate || (willChangeRole && !staysAdmin))
-      if (wouldLoseAdmin) {
-        const countRes = await pool.query(
-          `SELECT COUNT(*)::int AS n
-             FROM users u JOIN user_roles ur ON u.role_id = ur.id
-            WHERE u.organization_id = $1 AND u.status = 'active'
-              AND (ur.permissions->>'admin_access')::boolean = true`,
-          [orgId],
-        )
-        if ((countRes.rows[0]?.n ?? 0) <= 1) {
-          return NextResponse.json(
-            { error: 'Cannot remove the last administrator — administration would be locked out.' },
-            { status: 409 },
+      const decision = await decideLastAdmin(
+        {
+          targetIsActiveAdmin: target?.admin_access === true && target?.status === 'active',
+          willDeactivate,
+          willChangeRole,
+          newRoleIsAdmin: willChangeRole ? newRoleIsAdmin : target?.admin_access === true,
+        },
+        async () => {
+          const countRes = await pool.query(
+            `SELECT COUNT(*)::int AS n
+               FROM users u JOIN user_roles ur ON u.role_id = ur.id
+              WHERE u.organization_id = $1 AND u.status = 'active'
+                AND (ur.permissions->>'admin_access')::boolean = true`,
+            [orgId],
           )
-        }
+          return countRes.rows[0]?.n ?? 0
+        },
+      )
+      if (!decision.ok) {
+        return NextResponse.json({ error: decision.error }, { status: decision.status })
       }
     }
 
