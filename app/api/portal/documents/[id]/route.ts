@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaff, isAdminRequest } from '@/lib/access'
+import { requireStaff, requireUser } from '@/lib/access'
+import { folderAccess, folderAccessFilter } from '@/lib/folder-access'
 import { toSafeHtml } from '@/lib/article-render'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
@@ -21,6 +22,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const ctx = await requireUser(request)
+  if (ctx instanceof NextResponse) return ctx
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -32,21 +35,12 @@ export async function GET(
   try {
     // RBAC read scoping (audit 2026-07-23): the detail read ignored folder
     // permissions — any user could read any document by id, bypassing
-    // restricted-folder access. Replicate the LIST's predicate: a doc in a
-    // restricted folder is readable only by a role with a folder_permissions
-    // grant (admins bypass). Inaccessible → 404 (never leak existence).
-    // Admins (by application role) see every folder; others match folder_permissions by role.
-    const userRole = (await isAdminRequest(request)) ? 'admin' : (session.user.role || 'user')
-    const folderAccess = userRole !== 'admin'
-      ? `AND (
-          d.folder_id IS NULL
-          OR f.is_restricted = false
-          OR EXISTS (
-            SELECT 1 FROM folder_permissions fp
-            WHERE fp.folder_id = d.folder_id AND fp.role = $3
-          )
-        )`
-      : ''
+    // restricted-folder access. Apply the shared predicate (lib/folder-access):
+    // a doc in a restricted folder is readable only by a role with a
+    // folder_permissions grant (admins bypass). Inaccessible → 404 (never leak
+    // existence).
+    const access = folderAccess(ctx.perms, session.user.role)
+    const folder = folderAccessFilter(access, 3, { folderId: 'd.folder_id', nullable: true })
     const doc = await queryOne(
       `SELECT d.*, f.name AS folder_name, co.name AS company_name,
         COALESCE(u.first_name || ' ' || u.last_name, u.email) AS created_by_name
@@ -54,8 +48,8 @@ export async function GET(
        LEFT JOIN folders f ON d.folder_id = f.id
        LEFT JOIN companies co ON d.company_id = co.id
        LEFT JOIN users u ON d.created_by = u.id
-       WHERE d.id = $1 AND d.organization_id = $2 AND d.is_deleted = false ${folderAccess}`,
-      userRole !== 'admin' ? [id, orgId, userRole] : [id, orgId]
+       WHERE d.id = $1 AND d.organization_id = $2 AND d.is_deleted = false ${folder.clause}`,
+      [id, orgId, ...folder.params]
     )
 
     if (!doc) {

@@ -1,5 +1,6 @@
 import { toSafeHtml } from '@/lib/article-render'
-import { requireStaff, isAdminRequest } from '@/lib/access'
+import { requireStaff, requireUser } from '@/lib/access'
+import { folderAccess, folderAccessFilter } from '@/lib/folder-access'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
@@ -17,6 +18,8 @@ const createSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const ctx = await requireUser(request)
+  if (ctx instanceof NextResponse) return ctx
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -27,8 +30,7 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams.get('q')
 
   try {
-    // Admins (by application role) see every folder; others match folder_permissions by role.
-    const userRole = (await isAdminRequest(request)) ? 'admin' : (session.user.role || 'user')
+    const access = folderAccess(ctx.perms, session.user.role)
 
     let sql = `
       SELECT
@@ -51,18 +53,10 @@ export async function GET(request: NextRequest) {
     let idx = 2
 
     // Filter by folder permissions (admins bypass restrictions)
-    if (userRole !== 'admin') {
-      sql += ` AND (
-        d.folder_id IS NULL
-        OR f.is_restricted = false
-        OR EXISTS (
-          SELECT 1 FROM folder_permissions fp
-          WHERE fp.folder_id = d.folder_id AND fp.role = $${idx}
-        )
-      )`
-      params.push(userRole)
-      idx++
-    }
+    const docFolder = folderAccessFilter(access, idx, { folderId: 'd.folder_id', nullable: true })
+    sql += ` ${docFolder.clause}`
+    params.push(...docFolder.params)
+    idx += docFolder.params.length
 
     if (folderId) {
       sql += ` AND d.folder_id = $${idx++}`
@@ -90,17 +84,10 @@ export async function GET(request: NextRequest) {
     const folderParams: any[] = [orgId]
     let fIdx = 2
 
-    if (userRole !== 'admin') {
-      folderSql += ` AND (
-        f.is_restricted = false
-        OR EXISTS (
-          SELECT 1 FROM folder_permissions fp
-          WHERE fp.folder_id = f.id AND fp.role = $${fIdx}
-        )
-      )`
-      folderParams.push(userRole)
-      fIdx++
-    }
+    const folderFilter = folderAccessFilter(access, fIdx, { folderId: 'f.id' })
+    folderSql += ` ${folderFilter.clause}`
+    folderParams.push(...folderFilter.params)
+    fIdx += folderFilter.params.length
 
     folderSql += ' GROUP BY f.id ORDER BY f.display_order, f.name'
 
