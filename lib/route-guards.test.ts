@@ -22,6 +22,7 @@ const API = join(ROOT, 'app', 'api')
 
 const GUARDS = [
   /\brequireUser\(/,
+  /\bfolderAccessFilter\(/,
   /\brequireStaff\(/,
   /\brequireCapability\(/,
   /\brequireTicketAccess\(/,
@@ -75,12 +76,6 @@ const ALLOWED: Record<string, Reason> = {
   'portal/dashboard/preference GET': "caller's own dashboard preference",
   'portal/dashboard/preference POST': "caller's own dashboard preference",
   'portal/dashboard/training-progress GET': "caller's own training progress",
-  'portal/documents GET': 'folder permissions applied in the query',
-  'portal/documents/[id] GET': 'folder permissions applied in the query',
-  'portal/documents/[id]/attachments GET': 'parent document visibility checked in the query',
-  'portal/documents/[id]/attachments/[attachmentId] GET': 'folder permissions applied in the query',
-  'portal/documents/folders GET': 'folder list; restricted folders filtered by role',
-  'portal/documents/folders/[id] GET': 'folder permissions applied in the query',
   'portal/documents/templates GET': 'document templates',
   'portal/kb/[slug]/acknowledge POST': 'caller acknowledges a policy for themselves',
   'portal/kb/[slug]/acknowledgment-status GET': "caller's own acknowledgment",
