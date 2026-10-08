@@ -11,6 +11,13 @@ name: E2E walk-through
 
 on:
   workflow_dispatch:
+  # Also on main, with no path filter: the walk-through can break without any
+  # file in this repo changing (an upstream image withdrawn from its registry
+  # took it red from 2026-09-13 and nothing else noticed), and on main there is
+  # no PR for a red check to sit on.
+  push:
+    branches:
+      - main
   pull_request:
     paths:
       - 'app/**'
