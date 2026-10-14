@@ -192,10 +192,24 @@ services:
 
   # MinIO object storage (internal only — for file uploads)
   minio:
-    # MinIO's own registry (the Docker Hub minio/* images are no longer
-    # pullable). Pinned to a release tag; bump deliberately.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO withdrew its public images: as of 2026-10 BOTH quay.io/minio/minio
+    # and docker.io/minio/minio answer every tag — including the immutable
+    # RELEASE.* pins — with HTTP 401 "access to the requested resource is not
+    # authorized" for an anonymous pull, so the previous quay.io pin broke every
+    # fresh install and the CI walk-through (first red run 2026-09-13).
+    #
+    # bitnamilegacy/minio repackages the same upstream MinIO server (2025.7.23)
+    # and is still anonymously pullable, so the storage layer under test is
+    # unchanged. Archived upstream, hence the digest pin: the tag cannot move
+    # and the pull fails loudly if the digest ever disappears.
+    #
+    # The image defaults to UID 1001 and its own Bitnami entrypoint; we run the
+    # minio binary directly as root so ./data/minio keeps the ownership and
+    # layout existing installs already have.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
     container_name: aegis-minio
+    user: "0:0"
+    entrypoint: ["minio"]
     command: server /data --console-address ":9001"
     expose:
       - "9000"
@@ -217,8 +231,10 @@ services:
 
   # Auto-create default bucket on startup
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # Same withdrawal as the minio service above; mc comes from bitnamilegacy.
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3@sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158
     container_name: aegis-minio-init
+    user: "0:0"
     depends_on:
       minio:
         condition: service_healthy
