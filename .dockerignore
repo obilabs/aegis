@@ -11,3 +11,4 @@ mcp/
 docker-compose*.yml
 .dockerignore
 Dockerfile
+e2e/

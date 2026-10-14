@@ -1,0 +1,3 @@
+node_modules/
+artifacts/
+.env.e2e
