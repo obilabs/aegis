@@ -15,23 +15,25 @@ interface NavItem {
   href: string
   icon: (props: { className?: string }) => JSX.Element
   featureKey?: string
+  /** Staff-only sections (end users never see them; the pages refuse too). */
+  staffOnly?: boolean
 }
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/portal/dashboard', icon: HomeIcon },
-  { name: 'Queue', href: '/portal/queue', icon: QueueIcon, featureKey: 'smart_queue' },
+  { name: 'Queue', href: '/portal/queue', icon: QueueIcon, featureKey: 'smart_queue', staffOnly: true },
   { name: 'Incidents', href: '/portal/tickets?type=incident', icon: TicketIcon },
   { name: 'Requests', href: '/portal/requests', icon: InboxIcon, featureKey: 'service_catalog' },
-  { name: 'Assets', href: '/portal/assets', icon: ServerIcon, featureKey: 'assets' },
-  { name: 'Companies', href: '/portal/companies', icon: BuildingIcon, featureKey: 'companies' },
-  { name: 'Contacts', href: '/portal/contacts', icon: UsersIcon },
+  { name: 'Assets', href: '/portal/assets', icon: ServerIcon, featureKey: 'assets', staffOnly: true },
+  { name: 'Companies', href: '/portal/companies', icon: BuildingIcon, featureKey: 'companies', staffOnly: true },
+  { name: 'Contacts', href: '/portal/contacts', icon: UsersIcon, staffOnly: true },
   { name: 'Knowledge Base', href: '/portal/kb', icon: BookIcon, featureKey: 'knowledge_base' },
   { name: 'AI Assistant', href: '/portal/chat', icon: SparklesIcon, featureKey: 'ai_chat' },
-  { name: 'Documents', href: '/portal/documents', icon: DocumentIcon },
-  { name: 'Credentials', href: '/portal/credentials', icon: KeyIcon, featureKey: 'credential_vault' },
-  { name: 'Operations', href: '/portal/operations', icon: OperationsIcon, featureKey: 'workflows' },
-  { name: 'Reports', href: '/portal/reports', icon: ReportIcon },
-  { name: 'Groups', href: '/portal/groups', icon: GroupsIcon, featureKey: 'teams' },
+  { name: 'Documents', href: '/portal/documents', icon: DocumentIcon, staffOnly: true },
+  { name: 'Credentials', href: '/portal/credentials', icon: KeyIcon, featureKey: 'credential_vault', staffOnly: true },
+  { name: 'Operations', href: '/portal/operations', icon: OperationsIcon, featureKey: 'workflows', staffOnly: true },
+  { name: 'Reports', href: '/portal/reports', icon: ReportIcon, staffOnly: true },
+  { name: 'Groups', href: '/portal/groups', icon: GroupsIcon, featureKey: 'teams', staffOnly: true },
 ]
 
 const adminNavigation: NavItem[] = [
@@ -462,10 +464,13 @@ function PortalShell({
 
   // Feature-gated navigation
   const { isEnabled } = useFeatures()
-  const visibleNav = navigation.filter(item => {
-    if (!item.featureKey) return true
-    return isEnabled(item.featureKey)
-  })
+  // Until permissions load, show only what every role may use, so an end
+  // user never sees (and a staff member at most briefly waits for) staff links.
+  const isStaff = !!permissions && (permissions.adminAccess || permissions.ticketAccess !== 'own')
+  const visibleNav = navigation
+    .filter(item => !item.staffOnly || isStaff)
+    .filter(item => !item.featureKey || isEnabled(item.featureKey))
+    .map(item => (!isStaff && item.name === 'Incidents' ? { ...item, name: 'My Tickets' } : item))
   const visibleAdminNav = adminNavigation.filter(item => {
     if (!item.featureKey) return true
     return isEnabled(item.featureKey)
