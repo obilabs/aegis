@@ -139,3 +139,10 @@ jobs:
 
       - name: Audit-log immutability + hash chain
         run: psql -v ON_ERROR_STOP=1 -f database/tests/audit-immutability.integration.test.sql
+
+      - name: Retention purge records what it destroys
+        # Same reason: the guarantee is a transaction boundary plus a real
+        # audit-write rejection. A vitest can check that lib/retention-purge.ts
+        # issues the right statements; only Postgres can show that a purge
+        # whose audit write fails leaves the data where it was.
+        run: psql -v ON_ERROR_STOP=1 -f database/tests/retention-purge-audit.integration.test.sql
