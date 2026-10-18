@@ -26,6 +26,7 @@ import {
   type UserPermissions,
 } from '@/lib/permissions'
 import { findAccessibleTicket } from '@/lib/ticket-attachments'
+import { pool } from '@/lib/db'
 
 export interface AccessContext {
   userId: string
@@ -92,3 +93,54 @@ export async function requireTicketAccess(
 
 /** SQL clause scoping a tickets alias to the caller (re-exported for list routes). */
 export { getTicketAccessFilter }
+
+/**
+ * Boolean checks for routes that keep their own response shape. These read
+ * the application role (users.role_id -> user_roles.permissions), so an
+ * administrator granted the role later passes exactly like the first admin.
+ * Do not check the Better Auth session role (`session.user.role`): it is only
+ * set to 'admin' for the account created at setup.
+ */
+export async function requestAllows(
+  request: Request,
+  need: { level?: 'staff' | 'admin'; capability?: Capability },
+): Promise<boolean> {
+  const ctx = await requireUser(request)
+  return !(ctx instanceof NextResponse) && allows(ctx.perms, need)
+}
+
+export const isAdminRequest = (request: Request) => requestAllows(request, { level: 'admin' })
+export const isStaffRequest = (request: Request) => requestAllows(request, { level: 'staff' })
+
+/**
+ * Admin check for an identity that may be either an application users.id or
+ * a Better Auth user id (API-key requests carry either). Uses the application
+ * role, never "user".role.
+ */
+export async function isAdminIdentity(id: string): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT (ur.permissions->>'admin_access')::boolean AS admin_access
+       FROM users u
+       JOIN user_roles ur ON ur.id = u.role_id
+      WHERE u.id::text = $1
+         OR u.email = (SELECT email FROM "user" WHERE id = $1)
+      LIMIT 1`,
+    [id],
+  )
+  return res.rows[0]?.admin_access === true
+}
+
+/** Staff check for a users.id or Better Auth user id (see isAdminIdentity). */
+export async function isStaffIdentity(id: string): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT ur.permissions AS p
+       FROM users u
+       JOIN user_roles ur ON ur.id = u.role_id
+      WHERE u.id::text = $1
+         OR u.email = (SELECT email FROM "user" WHERE id = $1)
+      LIMIT 1`,
+    [id],
+  )
+  const p = res.rows[0]?.p
+  return !!p && (p.admin_access === true || (p.ticket_access && p.ticket_access !== 'own'))
+}

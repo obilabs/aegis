@@ -4,7 +4,7 @@
  * Manage email domains for automatic user classification
  */
 
-import { requireStaff } from '@/lib/access'
+import { requireStaff, isAdminRequest } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is admin
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -33,7 +34,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Only admins can change portal settings
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
