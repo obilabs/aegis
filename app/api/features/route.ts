@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { pool } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { FEATURES } from '@/lib/features';
+import { FEATURES, isListedFeature } from '@/lib/features';
 
 // Normalize feature data — includes both naming conventions
 // (feature_key/is_enabled for features settings page, key/enabled for AI settings page)
@@ -37,7 +37,7 @@ function normalizeFeature(f: Record<string, unknown>) {
 }
 
 function getDefaultFeatures() {
-  return Object.values(FEATURES).map(f => normalizeFeature({
+  return Object.values(FEATURES).filter(isListedFeature).map(f => normalizeFeature({
     feature_key: f.key,
     feature_name: f.name,
     description: f.description,
@@ -86,7 +86,7 @@ export async function GET() {
 
       if (result.rows.length > 0) {
         return NextResponse.json({
-          features: result.rows.map((r: Record<string, unknown>) => normalizeFeature(r)),
+          features: result.rows.filter(isListedFeature).map((r: Record<string, unknown>) => normalizeFeature(r)),
         });
       }
     } catch {

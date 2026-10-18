@@ -17,6 +17,9 @@
 #   AEGIS_VERSION       = app image tag (default `local` = build from source;
 #                         set an immutable tag - a release or sha-<commit> -
 #                         to run a pre-built image. Never latest / edge.)
+#   CONTAINER_PREFIX    = container name prefix (default aegis -> aegis,
+#                         aegis-db, ...). Change it to run a second stack
+#                         on the same Docker host (use a different PORT too).
 #
 # Storage: bind mounts in ./data/ per root CLAUDE.md rule ("Volumes stored
 # in ./data/ within the project folder — never shared named volumes").
@@ -32,7 +35,7 @@ services:
   # Nginx reverse proxy (ONLY exposed service)
   nginx:
     image: nginx:1.30.4-alpine
-    container_name: aegis-nginx
+    container_name: ${CONTAINER_PREFIX:-aegis}-nginx
     ports:
       - "${BIND_HOST:-0.0.0.0}:${PORT:-8080}:80"
     volumes:
@@ -62,7 +65,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:8080}
-    container_name: aegis
+    container_name: ${CONTAINER_PREFIX:-aegis}
     expose:
       - "3000"
     environment:
@@ -154,7 +157,7 @@ services:
   # PostgreSQL database with pgvector (internal only)
   db:
     image: pgvector/pgvector:pg16
-    container_name: aegis-db
+    container_name: ${CONTAINER_PREFIX:-aegis}-db
     expose:
       - "5432"
     environment:
@@ -176,7 +179,7 @@ services:
   # Redis (internal only — for pg-boss job queue + caching)
   redis:
     image: redis:7-alpine
-    container_name: aegis-redis
+    container_name: ${CONTAINER_PREFIX:-aegis}-redis
     expose:
       - "6379"
     volumes:
@@ -207,7 +210,7 @@ services:
     # minio binary directly as root so ./data/minio keeps the ownership and
     # layout existing installs already have.
     image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
-    container_name: aegis-minio
+    container_name: ${CONTAINER_PREFIX:-aegis}-minio
     user: "0:0"
     entrypoint: ["minio"]
     command: server /data --console-address ":9001"
@@ -233,7 +236,7 @@ services:
   minio-init:
     # Same withdrawal as the minio service above; mc comes from bitnamilegacy.
     image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3@sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158
-    container_name: aegis-minio-init
+    container_name: ${CONTAINER_PREFIX:-aegis}-minio-init
     user: "0:0"
     depends_on:
       minio:
@@ -259,7 +262,7 @@ services:
   docling:
     profiles: [docling, full]
     image: quay.io/docling-project/docling-serve:v1.32.0
-    container_name: aegis-docling
+    container_name: ${CONTAINER_PREFIX:-aegis}-docling
     expose:
       - "5001"
     environment:

@@ -22,7 +22,7 @@ touch the app, the image or this suite. Failed runs upload `e2e/artifacts`.
 The stack is compose project `aegis-e2e` with `e2e/compose.e2e.yml` layered on
 the unchanged `docker-compose.yml`:
 
-- containers are named `aegis-e2e-*`, so it runs beside another Aegis install;
+- containers are named `aegis-e2e*` (`CONTAINER_PREFIX`), so it runs beside another Aegis install;
 - data lives in named volumes, not `./data`, so a real install's data is never
   touched, and `docker compose -p aegis-e2e ... down -v` removes everything;
 - nginx binds `127.0.0.1` only; outbound telemetry is off.
@@ -48,6 +48,7 @@ state saved by earlier ones in `e2e/artifacts/state.json`.
 | `07d-second-admin` | An account granted System Admin after setup reaches the admin-only settings APIs and pages |
 | `07e-user-manager-grants` | A staff account with `user_management` and no admin access assigns non-admin roles, but cannot grant an admin role to anyone, create an admin account, or change its own role |
 | `07-restart-persistence` | `down` (no `-v`) + `up`: rows, attachment bytes, sessions (persisted auth secret) survive; setup stays closed |
+| `07c-change-and-problem-tickets` | A technician raises a Change Request and a Problem; an end user is refused |
 
 ## Artifacts (`e2e/artifacts/`, gitignored)
 

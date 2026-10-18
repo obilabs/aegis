@@ -287,7 +287,9 @@ export async function POST(request: NextRequest) {
       if (scheduled_end) customFields.scheduled_end = scheduled_end
       // Override requires_approval based on change_type
       // Standard = no approval, Normal/Emergency = requires approval
-      if (change_type === 'standard') {
+      if (!ticketType) {
+        // no Change Request type configured: nothing to override
+      } else if (change_type === 'standard') {
         ticketType.requires_approval = false
       } else if (change_type === 'normal' || change_type === 'emergency') {
         ticketType.requires_approval = true
@@ -299,7 +301,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Set request_category based on type
-    const requestCategory = typeName === 'change' ? 'change' : typeName === 'problem' ? 'problem' : typeName === 'service_request' ? 'service_request' : 'incident'
+    // Values of the request_category enum ('change_request', not 'change').
+    const requestCategory = typeName === 'change' ? 'change_request' : typeName === 'problem' ? 'problem' : typeName === 'service_request' ? 'service_request' : 'incident'
 
     // Validate scheduling fields
     const resolvedActionDateType = action_date_type || 'complete_by'

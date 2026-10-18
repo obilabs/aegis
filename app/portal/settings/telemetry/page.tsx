@@ -188,7 +188,7 @@ export default function TelemetrySettingsPage() {
             </div>
             <p className="text-sm text-slate-400">
               Master kill-switch. When off, no payload is sent — including the daily
-              liveness ping, the install ping, and license re-validation. The tier
+              liveness ping, the install ping, and the instance check-in. The tier
               toggles below only matter when this is on.
             </p>
             {envOverrideActive && (
