@@ -18,6 +18,7 @@
  * ipify request, which the operator is the one asking for.
  */
 
+import { requireCapability } from '@/lib/access'
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
 
@@ -25,6 +26,8 @@ const IPIFY_URL = 'https://api.ipify.org'
 const FETCH_TIMEOUT_MS = 5_000
 
 export async function GET(request: Request) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   const ctx = await getAuthContext(request as never)
   if (!ctx) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

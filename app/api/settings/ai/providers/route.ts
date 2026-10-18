@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { query } from '@/lib/db'
@@ -6,7 +7,9 @@ import { getOrgId } from '@/lib/org'
 import { requireAdmin } from '@/lib/require-admin'
 
 // GET - List all AI providers
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({
     headers: await headers(),
   })

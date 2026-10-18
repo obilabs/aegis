@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { requireTicketAccess } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
 
@@ -12,6 +13,8 @@ export async function PATCH(
     const { userId, orgId } = ctx
 
     const { id, taskId } = await params
+    const guard = await requireTicketAccess(request, id, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
     const body = await request.json()
 
     const updates: string[] = []
@@ -74,6 +77,8 @@ export async function DELETE(
     const { orgId } = ctx
 
     const { id, taskId } = await params
+    const guard = await requireTicketAccess(request, id, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
 
     const result = await pool.query(
       `DELETE FROM ticket_tasks WHERE id = $1 AND ticket_id = $2 AND organization_id = $3 RETURNING id`,

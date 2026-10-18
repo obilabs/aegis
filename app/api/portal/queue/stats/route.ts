@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireStaff } from '@/lib/access'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
 import { NextResponse } from 'next/server'
@@ -9,6 +10,8 @@ import { NextResponse } from 'next/server'
  * Queue statistics: counts by action state, base status, SLA breach count, etc.
  */
 export async function GET(request: Request) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {

@@ -1,9 +1,14 @@
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
+import { requireUser, allows, getTicketAccessFilter } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
+  // Scoped like the ticket list: staff see requests in their ticket scope, an
+  // end user sees only their own.
+  const guard = await requireUser(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {
@@ -11,6 +16,8 @@ export async function GET(request: NextRequest) {
     }
 
     const orgId = await getOrgId()
+    const access = await getTicketAccessFilter(guard.userId, orgId, 't', 2)
+    const isStaff = allows(guard.perms, { level: 'staff' })
 
     // Service requests are tickets where request_category is not 'incident'
     // or where the ticket type is not Incident
@@ -41,8 +48,9 @@ export async function GET(request: NextRequest) {
           t.request_category != 'incident'
           OR tt.name != 'Incident'
         )
+        ${access.clause}
       ORDER BY t.created_at DESC
-    `, [orgId])
+    `, [orgId, ...access.params])
 
     // Also get type counts for sidebar filters
     const typeCounts = await pool.query(`
@@ -57,9 +65,10 @@ export async function GET(request: NextRequest) {
           t.request_category != 'incident'
           OR tt.name != 'Incident'
         )
+        ${access.clause}
       GROUP BY COALESCE(tt.name, t.request_category::text)
       ORDER BY count DESC
-    `, [orgId])
+    `, [orgId, ...access.params])
 
     // Also get catalog-based service requests
     const catalogRequests = await pool.query(`
@@ -80,8 +89,9 @@ export async function GET(request: NextRequest) {
       JOIN catalog_items ci ON sr.catalog_item_id = ci.id
       LEFT JOIN contacts c ON sr.requester_id = c.id
       WHERE sr.organization_id = $1
+        AND ($2::boolean OR sr.requester_id = (SELECT contact_id FROM users WHERE id = $3))
       ORDER BY sr.created_at DESC
-    `, [orgId])
+    `, [orgId, isStaff, guard.userId])
 
     return NextResponse.json({
       requests: result.rows,

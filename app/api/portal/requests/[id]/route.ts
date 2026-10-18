@@ -1,5 +1,5 @@
 import { pool } from '@/lib/db'
-import { getAuthContext } from '@/lib/org'
+import { requireUser, allows } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
@@ -7,12 +7,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await getAuthContext(request)
-    if (!ctx) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Staff, or the person who raised the request; anyone else reads not found.
+    const ctx = await requireUser(request)
+    if (ctx instanceof NextResponse) return ctx
 
     const { orgId } = ctx
+    const isStaff = allows(ctx.perms, { level: 'staff' })
     const { id } = await params
 
     const result = await pool.query(`
@@ -36,7 +36,8 @@ export async function GET(
       LEFT JOIN "user" approver ON sr.approved_by::text = approver.id
       LEFT JOIN "user" rejector ON sr.rejected_by::text = rejector.id
       WHERE sr.id = $1 AND sr.organization_id = $2
-    `, [id, orgId])
+        AND ($3::boolean OR sr.requester_id = (SELECT contact_id FROM users WHERE id = $4))
+    `, [id, orgId, isStaff, ctx.userId])
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Request not found' }, { status: 404 })
@@ -54,12 +55,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await getAuthContext(request)
-    if (!ctx) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await requireUser(request)
+    if (ctx instanceof NextResponse) return ctx
 
     const { userId, orgId } = ctx
+    const isStaff = allows(ctx.perms, { level: 'staff' })
     const { id } = await params
     const body = await request.json()
 
@@ -69,8 +69,9 @@ export async function PATCH(
         `UPDATE service_requests
          SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = $3, updated_at = NOW()
          WHERE id = $1 AND organization_id = $2 AND status = 'pending_approval'
+           AND ($4::boolean OR requester_id = (SELECT contact_id FROM users WHERE id = $3))
          RETURNING id`,
-        [id, orgId, userId]
+        [id, orgId, userId, isStaff]
       )
 
       if (result.rows.length === 0) {

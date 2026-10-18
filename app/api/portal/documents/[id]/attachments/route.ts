@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff, requireUser } from '@/lib/access'
+import { folderAccess, folderAccessFilter } from '@/lib/folder-access'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId, getUserId } from '@/lib/org'
@@ -8,6 +10,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const ctx = await requireUser(request)
+  if (ctx instanceof NextResponse) return ctx
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -16,10 +20,16 @@ export async function GET(
   const orgId = await getOrgId()
   const { id } = await params
 
-  // Verify document exists and belongs to org
+  // Verify the document exists, belongs to the org, and is in a folder the
+  // caller may read (the shared predicate in lib/folder-access, as used by the
+  // document read and the attachment download). Inaccessible → 404.
+  const access = folderAccess(ctx.perms, session.user.role)
+  const folder = folderAccessFilter(access, 3, { folderId: 'd.folder_id', nullable: true })
   const doc = await queryOne(
-    'SELECT id FROM documents WHERE id = $1 AND organization_id = $2 AND is_deleted = false',
-    [id, orgId]
+    `SELECT d.id FROM documents d
+     LEFT JOIN folders f ON d.folder_id = f.id
+     WHERE d.id = $1 AND d.organization_id = $2 AND d.is_deleted = false ${folder.clause}`,
+    [id, orgId, ...folder.params]
   )
   if (!doc) {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 })
@@ -46,6 +56,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

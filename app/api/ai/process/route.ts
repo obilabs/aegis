@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff } from '@/lib/access'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
@@ -28,6 +29,8 @@ interface AIModel {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({
     headers: await headers(),
   })
