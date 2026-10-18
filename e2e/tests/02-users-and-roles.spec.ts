@@ -129,12 +129,12 @@ test('a technician cannot grant themselves admin (UI and API)', async ({ browser
   expect((await r.post('/api/auth/admin/set-role', { headers: hdr, data: { userId: session.user.id, role: 'admin' } })).status()).toBe(403)
   expect((await r.post('/api/auth/update-user', { headers: hdr, data: { role: 'admin' } })).status()).toBeGreaterThanOrEqual(400)
 
-  // UI: the invite form refuses to create an admin for them as well.
+  // UI: user management is not reachable; the settings page refuses server-side.
   await page.goto('/portal/settings/users')
+  await expect(page).toHaveURL(/\/portal\/dashboard\?denied=/)
   await expectPortalRendered(page)
-  const attempt = await inviteUser(page, { first: 'Tess', last: 'Again', email: 'tess2@e2e.example.com' }, /System Admin/)
-  expect(attempt.status()).toBe(403)
-  await shot(page, '08-tech-cannot-invite-admin')
+  await expect(page.getByRole('button', { name: 'Invite User' })).toHaveCount(0)
+  await shot(page, '08-tech-refused-user-settings')
 
   // Nothing changed.
   const permsAfter = await (await r.get('/api/portal/permissions')).json()
