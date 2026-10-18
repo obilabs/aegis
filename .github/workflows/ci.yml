@@ -85,3 +85,57 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+  database:
+    name: Database contract (audit immutability)
+    runs-on: ubuntu-latest
+    # The audit trail's append-only guarantee is enforced by triggers, an ACL
+    # and a hash chain — none of which a typecheck or a vitest can exercise.
+    # It has to run against a real Postgres, on a schema built the way a fresh
+    # install builds it, or "append-only" is back to being a claim.
+    services:
+      postgres:
+        # pgvector, because init.sql declares `CREATE EXTENSION vector` and
+        # four tables use the type. Pinned to the same major as production.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aegis
+          POSTGRES_PASSWORD: aegis
+          POSTGRES_DB: aegis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aegis -d aegis"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: aegis
+      PGPASSWORD: aegis
+      PGDATABASE: aegis
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Build the schema the way a fresh install does
+        # Mirrors docker-entrypoint.sh: init.sql first, then any migration not
+        # already recorded in schema_migrations (init.sql pre-populates 088-097).
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -q -f database/init.sql
+          psql -v ON_ERROR_STOP=1 -q -c "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW());"
+          for migration in database/migrations/*.sql; do
+            name="$(basename "$migration" .sql)"
+            applied="$(psql -t -A -c "SELECT 1 FROM schema_migrations WHERE version = '$name';")"
+            if [ "$applied" = "1" ]; then continue; fi
+            echo "applying $name"
+            psql -v ON_ERROR_STOP=1 -q -f "$migration"
+            psql -q -c "INSERT INTO schema_migrations (version) VALUES ('$name');"
+          done
+
+      - name: Audit-log immutability + hash chain
+        run: psql -v ON_ERROR_STOP=1 -f database/tests/audit-immutability.integration.test.sql
