@@ -1,0 +1,18 @@
+# Commits on main whose subject does not name a pull request, confirmed as history
+# from before this repository had branch protection (enabled 2026-09-10, admins
+# bound). Verified read-only on 2026-10-14: all twelve are Mike's own, dated
+# 2026-08-08 to 2026-08-25, none linked to a pull request. They are measured from
+# the pre-split-archive tag, which predates them.
+# Recorded 2026-10-18; see obilabs/north-star BUILD-WINDOW-2026.md.
+b736a47 2026-08-25 Dependency vulnerabilities 45 -> 0
+e0d5c2e 2026-08-24 README de-tiered, CLA and contributor gate, telemetry split disclosed
+1ace8fb 2026-08-23 Login stops advertising AI support the install has not enabled
+1f6a343 2026-08-11 Pin @obilabs/licensing and complete the LicenseResult mock
+e29c0dd 2026-08-11 MTP self-revoke endpoint
+21626c8 2026-08-11 Gitignore .rd_log and tsconfig.tsbuildinfo
+fafca24 2026-08-10 Consume @obilabs/* from public npm, drop NPM_TOKEN
+4dffb66 2026-08-09 Adopt @obilabs/licensing for the licence heartbeat
+18d062d 2026-08-08 Align pnpm to the lockfile generator so image builds pass
+49d2f70 2026-08-08 @obilabs/documents jsdom-free sanitizer
+42469eb 2026-08-08 Externalize isomorphic-dompurify; document the KB-route build blocker
+e5c28a5 2026-08-08 Standalone repo: consume @obilabs/* from GitHub Packages
