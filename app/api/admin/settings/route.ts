@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isAdminRequest } from '@/lib/access'
 import { query } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { logAudit, getClientIp } from '@/lib/audit'
@@ -24,8 +25,7 @@ export async function GET(request: NextRequest) {
   const { session, orgId } = ctx
 
   // Verify admin role
-  const user = session.user as { role?: string }
-  if (user.role !== 'admin') {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json(
       { success: false, error: 'Forbidden: Admin access required' },
       { status: 403 }
@@ -74,8 +74,7 @@ export async function PUT(request: NextRequest) {
   const { session, userId, orgId } = ctx
 
   // Verify admin role
-  const user = session.user as { role?: string }
-  if (user.role !== 'admin') {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json(
       { success: false, error: 'Forbidden: Admin access required' },
       { status: 403 }

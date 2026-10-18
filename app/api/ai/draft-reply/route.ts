@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff } from '@/lib/access'
 import { query, queryOne } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 import { determineAccessContext, getSecurityContextMessage } from '@/lib/ai-chat-security'
@@ -20,6 +21,8 @@ interface AIModel {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {

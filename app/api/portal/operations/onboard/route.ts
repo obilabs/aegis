@@ -1,8 +1,11 @@
 import { pool } from '@/lib/db'
+import { requireStaff } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {

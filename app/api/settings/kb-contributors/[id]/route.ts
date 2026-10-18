@@ -2,6 +2,7 @@
  * KB Contributor API - Single Contributor Operations
  */
 
+import { requireStaff, isAdminRequest, requestAllows } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
@@ -10,6 +11,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session?.user) {
@@ -17,7 +20,7 @@ export async function PUT(
     }
 
     // Check if user is admin or manager
-    if (!session.user.role || !['admin', 'manager'].includes(session.user.role)) {
+    if (!(await requestAllows(request, { capability: 'reports' }))) {
       return NextResponse.json({ error: 'Admin or manager access required' }, { status: 403 })
     }
 
@@ -82,7 +85,7 @@ export async function DELETE(
     }
 
     // Check if user is admin
-    if (session.user.role !== 'admin') {
+    if (!(await isAdminRequest(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 

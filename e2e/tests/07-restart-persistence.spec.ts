@@ -40,6 +40,18 @@ test('data, attachments, secrets and sessions survive a stack restart', async ({
   const old = await browser.newContext({ storageState: authFile('tech') })
   const session = await (await old.request.get('/api/auth/get-session')).json()
   expect(session?.user?.email).toBeTruthy()
+  // The ticket API must answer for the pre-restart session. Poll briefly: in
+  // CI the first requests after `up` occasionally land before the app has
+  // finished warming its database pool, and the page renders "not found" for
+  // any failed fetch. Record what came back so a real regression is visible.
+  const ticketUrl = `/api/portal/tickets/${mustState('ticketId')}`
+  const seen: number[] = []
+  await expect(async () => {
+    const res = await old.request.get(ticketUrl)
+    seen.push(res.status())
+    expect(res.status()).toBe(200)
+  }).toPass({ timeout: 60_000, intervals: [1_000, 2_000, 5_000] })
+  if (seen.length > 1) console.log(`ticket API after restart answered ${seen.join(', ')} before 200`)
   const oldPage = await old.newPage()
   await oldPage.goto(`/portal/tickets/${mustState('ticketId')}`)
   await expect(oldPage.getByRole('heading', { name: mustState('ticketSubject') })).toBeVisible()

@@ -4,11 +4,14 @@
  * Manage who can contribute to the knowledge base
  */
 
+import { requireCapability, requestAllows } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { pool } from '@/lib/db'
 import { getAuthContext } from '@/lib/org'
 
 export async function GET(request: NextRequest) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {
@@ -54,6 +57,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {
@@ -63,7 +68,7 @@ export async function POST(request: NextRequest) {
     const { session, userId, orgId: organizationId } = ctx
 
     // Check if user is admin or manager
-    if (!session.user.role || !['admin', 'manager'].includes(session.user.role)) {
+    if (!(await requestAllows(request, { capability: 'reports' }))) {
       return NextResponse.json({ error: 'Admin or manager access required' }, { status: 403 })
     }
 

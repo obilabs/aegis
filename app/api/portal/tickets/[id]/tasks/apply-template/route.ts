@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { requireTicketAccess } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -13,6 +14,8 @@ export async function POST(
     const { userId, orgId } = ctx
 
     const { id: ticketId } = await params
+    const guard = await requireTicketAccess(request, ticketId, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
     const body = await request.json()
 
     if (!body.template_id) {

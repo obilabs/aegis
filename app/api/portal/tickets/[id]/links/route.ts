@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireTicketAccess } from '@/lib/access'
 import { pool } from '@/lib/db'
 import { getOrgId, getUserId } from '@/lib/org'
 import { NextRequest, NextResponse } from 'next/server'
@@ -18,6 +19,8 @@ export async function GET(
     }
 
     const { id: ticketId } = await params
+    const guard = await requireTicketAccess(request, ticketId)
+    if (guard instanceof NextResponse) return guard
     const orgId = await getOrgId()
 
     // Verify ticket exists and belongs to this org
@@ -157,6 +160,8 @@ export async function POST(
     }
 
     const { id: ticketId } = await params
+    const guard = await requireTicketAccess(request, ticketId)
+    if (guard instanceof NextResponse) return guard
     const orgId = await getOrgId()
     const userId = await getUserId(session.user.email)
     const body = await request.json()
@@ -288,6 +293,8 @@ export async function DELETE(
     }
 
     const { id: ticketId } = await params
+    const guard = await requireTicketAccess(request, ticketId, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
     const orgId = await getOrgId()
     const body = await request.json()
 

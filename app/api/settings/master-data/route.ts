@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { requireStaff } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { isAdmin } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
@@ -20,6 +21,8 @@ const BOOLEAN_FIELDS = [
 const DEFAULTS = Object.fromEntries(BOOLEAN_FIELDS.map(f => [f, false]))
 
 export async function GET(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   try {
     const ctx = await getAuthContext(request)
     if (!ctx) {

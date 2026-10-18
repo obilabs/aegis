@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStaff, requireUser } from '@/lib/access'
+import { folderAccess, folderAccessFilter } from '@/lib/folder-access'
 import { auth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -12,6 +14,8 @@ const createSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const ctx = await requireUser(request)
+  if (ctx instanceof NextResponse) return ctx
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -19,16 +23,22 @@ export async function GET(request: NextRequest) {
 
   const orgId = await getOrgId()
 
+  // A restricted folder is listed only for a role with a folder_permissions
+  // grant (admins bypass) — the same predicate the document list applies, so
+  // the two cannot disagree about what a caller may see.
+  const access = folderAccess(ctx.perms, session.user.role)
+  const folder = folderAccessFilter(access, 2, { folderId: 'f.id' })
+
   try {
     const folders = await query(
       `SELECT f.id, f.name, f.description, f.parent_id, f.icon, f.display_order,
         COUNT(d.id)::int AS document_count
        FROM folders f
        LEFT JOIN documents d ON d.folder_id = f.id AND d.is_deleted = false
-       WHERE f.organization_id = $1
+       WHERE f.organization_id = $1 ${folder.clause}
        GROUP BY f.id, f.name, f.description, f.parent_id, f.icon, f.display_order
        ORDER BY f.display_order, f.name`,
-      [orgId]
+      [orgId, ...folder.params]
     )
 
     return NextResponse.json({ folders })
@@ -39,6 +49,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requireStaff(request)
+  if (guard instanceof NextResponse) return guard
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

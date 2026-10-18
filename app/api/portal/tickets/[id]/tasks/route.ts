@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db'
+import { requireTicketAccess } from '@/lib/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/org'
 
@@ -12,6 +13,8 @@ export async function GET(
     const { orgId } = ctx
 
     const { id } = await params
+    const guard = await requireTicketAccess(request, id)
+    if (guard instanceof NextResponse) return guard
 
     const result = await pool.query(`
       SELECT
@@ -47,6 +50,8 @@ export async function POST(
     const { userId, orgId } = ctx
 
     const { id } = await params
+    const guard = await requireTicketAccess(request, id, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
     const body = await request.json()
 
     if (!body.title?.trim()) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCapability, requestAllows } from '@/lib/access'
 import { auth } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { getOrgId } from '@/lib/org'
@@ -10,6 +11,8 @@ import { getOrgId } from '@/lib/org'
  * Admin/helpdesk only.
  */
 export async function GET(request: NextRequest) {
+  const guard = await requireCapability(request, 'settings')
+  if (guard instanceof NextResponse) return guard
   try {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) {
@@ -19,7 +22,7 @@ export async function GET(request: NextRequest) {
     const orgId = await getOrgId()
 
     // Check admin or helpdesk role
-    if (!session.user.role || !['admin', 'helpdesk'].includes(session.user.role)) {
+    if (!(await requestAllows(request, { capability: 'triage' }))) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
 

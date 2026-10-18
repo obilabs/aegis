@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { requireTicketAccess } from '@/lib/access'
 import { queryOne } from '@/lib/db'
 import { hasCapability } from '@/lib/permissions'
 import { NextRequest, NextResponse } from 'next/server'
@@ -19,6 +20,8 @@ export async function GET(
     }
 
     const { id } = await params
+    const guard = await requireTicketAccess(request, id, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
 
     const currentScore = await queryOne<{
       action_state: string
@@ -83,6 +86,8 @@ export async function POST(
     }
 
     const { id } = await params
+    const guard = await requireTicketAccess(request, id, { staffOnly: true })
+    if (guard instanceof NextResponse) return guard
 
     const itsmUser = await queryOne<{ id: string }>(
       `SELECT id FROM users WHERE email = $1 LIMIT 1`,

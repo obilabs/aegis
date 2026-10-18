@@ -9,7 +9,7 @@
  *     account that currently has admin access — requires the actor to be an
  *     admin. The `user_management` capability alone is not enough.
  *   - Nobody changes their own role.
- *   - The last active admin cannot be removed (enforced in the PATCH route).
+ *   - The last active admin cannot be removed.
  *
  * The decision functions are pure so the policy is unit-tested directly; the
  * routes resolve the facts (is the role admin? is the target admin?) and call
@@ -18,7 +18,8 @@
 
 import { pool } from '@/lib/db'
 
-export type GrantDecision = { ok: true } | { ok: false; status: 403; error: string }
+/** 403 for a refused grant; 409 for the last-admin conflict. */
+export type GrantDecision = { ok: true } | { ok: false; status: 403 | 409; error: string }
 
 const ALLOW: GrantDecision = { ok: true }
 
@@ -85,6 +86,40 @@ export async function lookupRole(
 }
 
 /** Does this user currently hold a role with admin_access? */
+/**
+ * Last-admin guard (PRINCIPLES.md: never lock out administration). Refuses an
+ * update that would take admin access off the FINAL active administrator, by
+ * deactivating them or by moving them to a non-admin role. Recovery from a
+ * zero-admin state is out-of-band (setup wizard / DB), never this endpoint.
+ *
+ * `countActiveAdmins` is called only when the update would actually cost the
+ * target their admin access, so an ordinary status change costs no extra query.
+ */
+export async function decideLastAdmin(
+  input: {
+    /** the target holds admin access AND is currently active */
+    targetIsActiveAdmin: boolean
+    /** status is changing to something other than 'active' */
+    willDeactivate: boolean
+    /** role_id is part of this update */
+    willChangeRole: boolean
+    /** the role being assigned has admin_access */
+    newRoleIsAdmin: boolean
+  },
+  countActiveAdmins: () => Promise<number>,
+): Promise<GrantDecision> {
+  const losesAdmin =
+    input.targetIsActiveAdmin &&
+    (input.willDeactivate || (input.willChangeRole && !input.newRoleIsAdmin))
+  if (!losesAdmin) return ALLOW
+  if ((await countActiveAdmins()) > 1) return ALLOW
+  return {
+    ok: false,
+    status: 409,
+    error: 'Cannot remove the last administrator — administration would be locked out.',
+  }
+}
+
 export async function userHasAdminRole(userId: string, orgId: string): Promise<boolean> {
   const res = await pool.query(
     `SELECT (ur.permissions->>'admin_access')::boolean AS admin_access
