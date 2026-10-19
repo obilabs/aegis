@@ -28,6 +28,7 @@ vi.mock('@/lib/org', () => ({ getAuthContext: vi.fn() }))
 vi.mock('@/lib/access', () => ({ isAdminRequest: vi.fn() }))
 
 import { getAuthContext } from '@/lib/org'
+import { CONTACT_PURGE_DELETE_TABLES } from '@/lib/contact-purge'
 import { isAdminRequest } from '@/lib/access'
 import { DELETE as purgeOne } from './[id]/purge/route'
 import { POST as purgeBulk } from './bulk/purge/route'
@@ -137,6 +138,13 @@ describe('DELETE /api/portal/admin/contacts/[id]/purge', () => {
     expect(audit).toBeGreaterThan(del)
     expect(commit).toBeGreaterThan(audit)
     expect(order).not.toContain('ROLLBACK')
+
+    // Both routes empty the same set of tables, from lib/contact-purge.ts —
+    // the single list is what stops the two paths from diverging.
+    for (const table of CONTACT_PURGE_DELETE_TABLES) {
+      expect(order, `${table} not cleaned up`).toContain(
+        `DELETE FROM ${table} WHERE contact_id = ANY($1)`)
+    }
 
     // And NOT fire-and-forget on the pool, which is what it used to be.
     const poolAudits = query.mock.calls.filter(([sql]) =>
@@ -250,6 +258,12 @@ describe('POST /api/portal/admin/contacts/bulk/purge', () => {
     expect(commit).toBeGreaterThan(order.lastIndexOf(order.find(s => s.includes('INSERT INTO audit_log'))!))
     expect(begin).toBe(0)
     expect(order).not.toContain('ROLLBACK')
+
+    // The same list as the single-contact path, in the same statement form.
+    for (const table of CONTACT_PURGE_DELETE_TABLES) {
+      expect(order, `${table} not cleaned up by the bulk path`).toContain(
+        `DELETE FROM ${table} WHERE contact_id = ANY($1)`)
+    }
 
     // Each row names its own contact, so the trail stays queryable by entity_id.
     expect(audits[0].params).toContain(ids[0])

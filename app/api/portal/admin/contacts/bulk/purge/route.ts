@@ -2,6 +2,7 @@ import { pool } from '@/lib/db'
 import { isAdminRequest } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { logAuditOnClient, getClientIp } from '@/lib/audit'
+import { purgeContactLinkRows } from '@/lib/contact-purge'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -25,21 +26,6 @@ import { z } from 'zod'
 const bulkSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(100),
 })
-
-/**
- * NOTE: as in the single-contact route, this list does not cover every table
- * with a NOT NULL FK to `contacts` (`access_requests`, `asset_requests`,
- * `offboarding_requests`), so a contact referenced by one of those cannot be
- * purged at all. Separate bug, left to its own change; it can no longer
- * produce an audit row claiming otherwise.
- */
-const JUNCTION_TABLES = [
-  'contact_tags', 'contact_group_members', 'dynamic_group_members',
-  'contact_credentials', 'contact_files', 'email_preferences',
-  'asset_contacts', 'kb_contributors', 'kb_permissions',
-  'service_owners', 'software_contacts', 'team_members',
-  'user_service_access', 'workspace_members',
-]
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,11 +75,9 @@ export async function POST(request: NextRequest) {
     try {
       await client.query('BEGIN')
 
-      let junctionRows = 0
-      for (const table of JUNCTION_TABLES) {
-        const j = await client.query(`DELETE FROM ${table} WHERE contact_id = ANY($1)`, [purgeableIds])
-        junctionRows += j.rowCount ?? 0
-      }
+      // The same definition of "purge" the single-contact route uses — one
+      // list, in lib/contact-purge.ts, so the two paths cannot drift.
+      const junctionRows = await purgeContactLinkRows(client, purgeableIds)
 
       const del = await client.query('DELETE FROM contacts WHERE id = ANY($1)', [purgeableIds])
       deleted = del.rowCount ?? 0

@@ -2,6 +2,7 @@ import { pool } from '@/lib/db'
 import { isAdminRequest } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { logAuditOnClient, getClientIp } from '@/lib/audit'
+import { purgeContactLinkRows } from '@/lib/contact-purge'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -19,27 +20,8 @@ import { NextRequest, NextResponse } from 'next/server'
  * route answered 204, and a DELETE that failed left a committed `contact_purged`
  * row describing a purge that never happened (reproducible today — a contact
  * named on an `access_requests` row cannot be deleted, because that FK is
- * ON DELETE SET NULL against a NOT NULL column).
+ * ON DELETE SET NULL against a NOT NULL column; see lib/contact-purge.ts).
  */
-
-/**
- * Junction/child tables cleaned up before the contact row goes.
- *
- * NOTE: this list does not cover every table with a NOT NULL FK to `contacts`
- * (`access_requests`, `asset_requests` and `offboarding_requests` are missing,
- * so a contact referenced by one of those cannot be purged at all — the
- * ON DELETE SET NULL fires against a NOT NULL column and Postgres refuses).
- * That is a separate bug and is left to its own change; what matters here is
- * that the failure can no longer produce an audit row claiming the purge
- * happened.
- */
-const JUNCTION_TABLES = [
-  'contact_tags', 'contact_group_members', 'dynamic_group_members',
-  'contact_credentials', 'contact_files', 'email_preferences',
-  'asset_contacts', 'kb_contributors', 'kb_permissions',
-  'service_owners', 'software_contacts', 'team_members',
-  'user_service_access', 'workspace_members',
-]
 
 export async function DELETE(
   request: NextRequest,
@@ -85,20 +67,16 @@ export async function DELETE(
       )
     }
 
-    // Clean up orphaned junction rows, delete the contact, and record it — all
-    // in one transaction. All FKs are SET NULL, so these rows just have null
-    // contact_id.
+    // Remove the rows that belong to this contact, delete the contact, and
+    // record it — all in one transaction.
     const client = await pool.connect()
     let deleted = 0
     try {
       await client.query('BEGIN')
 
-      // Clean up junction/child tables with null-safe deletes
-      let junctionRows = 0
-      for (const table of JUNCTION_TABLES) {
-        const j = await client.query(`DELETE FROM ${table} WHERE contact_id = $1`, [id])
-        junctionRows += j.rowCount ?? 0
-      }
+      // Rows that have no meaning without this contact go first, in this
+      // transaction. Which tables those are, and why, is lib/contact-purge.ts.
+      const junctionRows = await purgeContactLinkRows(client, [id])
 
       // Delete the contact
       const del = await client.query('DELETE FROM contacts WHERE id = $1', [id])

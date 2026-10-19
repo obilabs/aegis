@@ -33,6 +33,53 @@
 BEGIN;
 
 -- ===========================================================================
+-- T00: the classification, once.
+--
+-- This is the same data as `CONTACT_LINK_COLUMNS` in `lib/contact-purge.ts`,
+-- and `lib/contact-purge.test.ts` parses THESE rows and asserts the TypeScript
+-- matches them — so there is one list, checked from both sides, rather than a
+-- copy per language that drifts quietly.
+--
+--   delete — the row is meaningless without the contact; the purge removes it
+--   detach — the row outlives the person; ON DELETE SET NULL nulls the link
+--   blocks — NOT NULL + ON DELETE SET NULL and not cleaned up, so Postgres
+--            REFUSES the parent delete (a bug, recorded, not a policy)
+--
+-- T08 compares this against pg_constraint, so a new column referencing
+-- `contacts` fails here until somebody classifies it.
+-- ===========================================================================
+CREATE TEMP TABLE cp_classification (table_name text, column_name text, disposition text);
+INSERT INTO cp_classification (table_name, column_name, disposition) VALUES
+  ('contact_tags',           'contact_id',        'delete'),
+  ('contact_group_members',  'contact_id',        'delete'),
+  ('dynamic_group_members',  'contact_id',        'delete'),
+  ('contact_credentials',    'contact_id',        'delete'),
+  ('contact_files',          'contact_id',        'delete'),
+  ('email_preferences',      'contact_id',        'delete'),
+  ('asset_contacts',         'contact_id',        'delete'),
+  ('kb_contributors',        'contact_id',        'delete'),
+  ('kb_permissions',         'contact_id',        'delete'),
+  ('service_owners',         'contact_id',        'delete'),
+  ('software_contacts',      'contact_id',        'delete'),
+  ('team_members',           'contact_id',        'delete'),
+  ('user_service_access',    'contact_id',        'delete'),
+  ('workspace_members',      'contact_id',        'delete'),
+  ('tickets',                'contact_id',        'detach'),
+  ('assets',                 'contact_id',        'detach'),
+  ('projects',               'contact_id',        'detach'),
+  ('ai_chat_sessions',       'contact_id',        'detach'),
+  ('onboarding_requests',    'contact_id',        'detach'),
+  ('bulk_access_operations', 'target_contact_id', 'detach'),
+  ('departments',            'head_contact_id',   'detach'),
+  ('contacts',               'reports_to_id',     'detach'),
+  ('users',                  'contact_id',        'detach'),
+  ('access_requests',        'requester_id',      'blocks'),
+  ('access_requests',        'for_contact_id',    'blocks'),
+  ('asset_requests',         'requester_id',      'blocks'),
+  ('asset_requests',         'for_contact_id',    'blocks'),
+  ('offboarding_requests',   'contact_id',        'blocks');
+
+-- ===========================================================================
 -- T01: single-contact purge, happy path. The transaction deletes the contact
 --      and appends ONE audit row describing it, and the chain still verifies.
 --
@@ -416,6 +463,260 @@ BEGIN
   ASSERT v_row.record_hash <> repeat('f', 64), 'T05: the caller forged record_hash and it stuck';
 
   RAISE NOTICE 'T05 passed (the chain framing is the database''s, not the caller''s)';
+END $$;
+
+-- ===========================================================================
+-- T06 / T07: nothing left behind, on BOTH paths.
+--
+-- The reason lib/contact-purge.ts exists is that "purge a contact" was a
+-- hand-written list of table names copied into three files. A test that
+-- exercises one path proves nothing about the others, so the fixture below is
+-- run through the single-contact path (T06) and the bulk path (T07), and both
+-- assert the same two things:
+--
+--   * every `delete` table holds NO row for the purged contact — memberships,
+--     tags, credential links, file links and preferences mean nothing without
+--     the person and are exactly the residue an erasure request is meant to
+--     remove. Left behind they are silent: ON DELETE SET NULL nulls the link
+--     wherever it can, so there is no error and no count;
+--   * every `detach` table KEPT its row, with a null link — a ticket, an asset
+--     and a reporting line are records of things that happened and outlive the
+--     person. A purge that deleted those would be destroying history, which is
+--     the opposite failure.
+--
+-- The delete list is read from cp_classification, so the test cannot drift
+-- from the code's definition of a purge.
+-- ===========================================================================
+
+-- One contact wired into every `delete` table, plus four `detach` tables.
+CREATE FUNCTION cp_make_linked_contact(p_org uuid, p_label text)
+RETURNS uuid LANGUAGE plpgsql AS $fn$
+DECLARE
+  v_c uuid; v_tag uuid; v_cg uuid; v_dg uuid; v_cred uuid; v_asset uuid;
+  v_svc uuid; v_sw uuid; v_ws uuid; v_team uuid;
+BEGIN
+  INSERT INTO contacts (organization_id, contact_type, first_name, last_name, is_deleted, deleted_at)
+    VALUES (p_org, 'employee', p_label, 'Linked', true, NOW() - interval '1 day')
+    RETURNING id INTO v_c;
+
+  INSERT INTO tags (organization_id, name) VALUES (p_org, p_label || '-tag') RETURNING id INTO v_tag;
+  INSERT INTO contact_groups (organization_id, name) VALUES (p_org, p_label || '-cg') RETURNING id INTO v_cg;
+  INSERT INTO dynamic_groups (organization_id, name) VALUES (p_org, p_label || '-dg') RETURNING id INTO v_dg;
+  INSERT INTO credentials (organization_id, name) VALUES (p_org, p_label || '-cred') RETURNING id INTO v_cred;
+  INSERT INTO assets (organization_id, name, contact_id) VALUES (p_org, p_label || '-asset', v_c) RETURNING id INTO v_asset;
+  INSERT INTO services (organization_id, name) VALUES (p_org, p_label || '-svc') RETURNING id INTO v_svc;
+  INSERT INTO software (organization_id, name) VALUES (p_org, p_label || '-sw') RETURNING id INTO v_sw;
+  INSERT INTO workspaces (organization_id, name, code) VALUES (p_org, p_label || '-ws', p_label) RETURNING id INTO v_ws;
+  INSERT INTO teams (organization_id, workspace_id, name) VALUES (p_org, v_ws, p_label || '-team') RETURNING id INTO v_team;
+
+  -- every `delete` table
+  INSERT INTO contact_tags (contact_id, tag_id) VALUES (v_c, v_tag);
+  INSERT INTO contact_group_members (group_id, contact_id) VALUES (v_cg, v_c);
+  INSERT INTO dynamic_group_members (group_id, contact_id) VALUES (v_dg, v_c);
+  INSERT INTO contact_credentials (contact_id, credential_id) VALUES (v_c, v_cred);
+  INSERT INTO contact_files (contact_id, file_id, file_name, file_path)
+    VALUES (v_c, gen_random_uuid(), p_label || '.pdf', '/' || p_label || '.pdf');
+  INSERT INTO email_preferences (contact_id) VALUES (v_c);
+  INSERT INTO asset_contacts (asset_id, contact_id) VALUES (v_asset, v_c);
+  INSERT INTO kb_contributors (organization_id, contact_id) VALUES (p_org, v_c);
+  INSERT INTO kb_permissions (organization_id, permission, contact_id) VALUES (p_org, 'read', v_c);
+  INSERT INTO service_owners (service_id, role_type, contact_id) VALUES (v_svc, 'owner', v_c);
+  INSERT INTO software_contacts (software_id, contact_id) VALUES (v_sw, v_c);
+  INSERT INTO team_members (team_id, contact_id) VALUES (v_team, v_c);
+  INSERT INTO user_service_access (contact_id, service_id) VALUES (v_c, v_svc);
+  INSERT INTO workspace_members (workspace_id, contact_id) VALUES (v_ws, v_c);
+
+  -- `detach` tables: these rows must SURVIVE with a null link
+  INSERT INTO tickets (organization_id, subject, contact_id)
+    VALUES (p_org, p_label || ' ticket', v_c);
+  INSERT INTO projects (organization_id, name, contact_id)
+    VALUES (p_org, p_label || ' project', v_c);
+  INSERT INTO contacts (organization_id, contact_type, first_name, last_name, reports_to_id)
+    VALUES (p_org, 'employee', p_label, 'Reportee', v_c);
+
+  RETURN v_c;
+END $fn$;
+
+-- Assert the residue is gone and the history is not. Shared by T06 and T07, so
+-- both paths are checked against the same definition — which is the point.
+CREATE FUNCTION cp_assert_nothing_left_behind(p_test text, p_org uuid, p_ids uuid[])
+RETURNS void LANGUAGE plpgsql AS $fn$
+DECLARE
+  r       record;
+  v_count int;
+  v_n     int := array_length(p_ids, 1);
+BEGIN
+  FOR r IN SELECT table_name FROM cp_classification WHERE disposition = 'delete' LOOP
+    EXECUTE format('SELECT COUNT(*) FROM %I WHERE contact_id = ANY($1)', r.table_name)
+      INTO v_count USING p_ids;
+    ASSERT v_count = 0,
+      format('%s: %s row(s) left behind in %s after the purge', p_test, v_count, r.table_name);
+  END LOOP;
+
+  -- The records that outlive the person are still there, with a null link.
+  SELECT COUNT(*) INTO v_count FROM tickets
+   WHERE organization_id = p_org AND contact_id IS NULL;
+  ASSERT v_count = v_n,
+    format('%s: expected %s detached ticket(s), found %s', p_test, v_n, v_count);
+
+  SELECT COUNT(*) INTO v_count FROM projects
+   WHERE organization_id = p_org AND contact_id IS NULL;
+  ASSERT v_count = v_n,
+    format('%s: expected %s detached project(s), found %s', p_test, v_n, v_count);
+
+  SELECT COUNT(*) INTO v_count FROM contacts
+   WHERE organization_id = p_org AND last_name = 'Reportee' AND reports_to_id IS NULL;
+  ASSERT v_count = v_n,
+    format('%s: the reporting line was destroyed rather than detached (%s of %s)',
+           p_test, v_count, v_n);
+
+  -- The assets themselves survived, detached: only the join rows went.
+  SELECT COUNT(*) INTO v_count FROM assets
+   WHERE organization_id = p_org AND contact_id IS NULL;
+  ASSERT v_count = v_n,
+    format('%s: expected %s detached asset(s), found %s', p_test, v_n, v_count);
+END $fn$;
+
+-- --- T06: the single-contact path -------------------------------------------
+DO $$
+DECLARE
+  v_org   uuid;
+  v_c     uuid;
+  r       record;
+  v_rows  int := 0;
+  v_n     int;
+BEGIN
+  INSERT INTO organizations (name) VALUES ('contact purge residue single') RETURNING id INTO v_org;
+  v_c := cp_make_linked_contact(v_org, 'single');
+
+  -- the route's statements: purgeContactLinkRows(client, [id]), then the
+  -- contact, then the audit row, all in this transaction.
+  FOR r IN SELECT table_name FROM cp_classification WHERE disposition = 'delete' LOOP
+    EXECUTE format('DELETE FROM %I WHERE contact_id = ANY($1)', r.table_name) USING ARRAY[v_c];
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    v_rows := v_rows + v_n;
+  END LOOP;
+
+  DELETE FROM contacts WHERE id = v_c;
+
+  INSERT INTO audit_log (
+    organization_id, actor_type, action, action_category, entity_type, entity_id,
+    new_values, success
+  ) VALUES (
+    v_org, 'user', 'contact_purged', 'delete', 'contacts', v_c,
+    jsonb_build_object('junction_rows', v_rows), true
+  );
+
+  -- One row per `delete` table went, so the count is the list's length. A table
+  -- added to the list without the fixture being updated fails here.
+  ASSERT v_rows = (SELECT COUNT(*) FROM cp_classification WHERE disposition = 'delete'),
+    format('T06: expected one row per delete-table, removed %s', v_rows);
+
+  PERFORM cp_assert_nothing_left_behind('T06', v_org, ARRAY[v_c]);
+
+  -- The payload says how much went with the person.
+  ASSERT (SELECT (new_values->>'junction_rows')::int FROM audit_log
+           WHERE organization_id = v_org AND action = 'contact_purged') = v_rows,
+    'T06: the audit payload does not record what else was removed';
+
+  RAISE NOTICE 'T06 passed (single path leaves no residue and keeps the history)';
+END $$;
+
+-- --- T07: the bulk path, same fixture, same assertions ----------------------
+DO $$
+DECLARE
+  v_org  uuid;
+  v_a    uuid;
+  v_b    uuid;
+  v_ids  uuid[];
+  r      record;
+  v_rows int := 0;
+  v_n    int;
+BEGIN
+  INSERT INTO organizations (name) VALUES ('contact purge residue bulk') RETURNING id INTO v_org;
+  v_a := cp_make_linked_contact(v_org, 'bulka');
+  v_b := cp_make_linked_contact(v_org, 'bulkb');
+  v_ids := ARRAY[v_a, v_b];
+
+  FOR r IN SELECT table_name FROM cp_classification WHERE disposition = 'delete' LOOP
+    EXECUTE format('DELETE FROM %I WHERE contact_id = ANY($1)', r.table_name) USING v_ids;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    v_rows := v_rows + v_n;
+  END LOOP;
+
+  DELETE FROM contacts WHERE id = ANY(v_ids);
+
+  ASSERT v_rows = 2 * (SELECT COUNT(*) FROM cp_classification WHERE disposition = 'delete'),
+    format('T07: expected two rows per delete-table, removed %s', v_rows);
+
+  -- The assertion that matters: the bulk path leaves exactly as little behind
+  -- as the single path. One shared list is what makes that true by
+  -- construction rather than by both files being edited together.
+  PERFORM cp_assert_nothing_left_behind('T07', v_org, v_ids);
+
+  RAISE NOTICE 'T07 passed (bulk path leaves no residue either)';
+END $$;
+
+-- ===========================================================================
+-- T08: the ratchet. Every foreign key referencing `contacts` must be
+--      classified, and the classification must agree with the column's
+--      nullability.
+--
+--      Adding a table that references `contacts` without deciding what a purge
+--      does about it is the shape of this whole bug. It fails here, with the
+--      column named, instead of becoming orphaned rows nobody sees.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_missing text;
+  v_stale   text;
+  v_wrong   text;
+BEGIN
+  CREATE TEMP TABLE cp_catalog AS
+  SELECT c.conrelid::regclass::text AS table_name,
+         a.attname::text            AS column_name,
+         a.attnotnull               AS not_null
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) k ON true
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k
+   WHERE c.contype = 'f' AND c.confrelid = 'contacts'::regclass;
+
+  SELECT string_agg(table_name || '.' || column_name, ', ' ORDER BY table_name, column_name)
+    INTO v_missing
+    FROM cp_catalog cat
+   WHERE NOT EXISTS (
+     SELECT 1 FROM cp_classification cl
+      WHERE cl.table_name = cat.table_name AND cl.column_name = cat.column_name);
+  ASSERT v_missing IS NULL,
+    format('T08: unclassified foreign key(s) to contacts: %s. Add them to '
+           'CONTACT_LINK_COLUMNS in lib/contact-purge.ts and to T00, and decide '
+           'whether a purge deletes the row or detaches it.', v_missing);
+
+  SELECT string_agg(table_name || '.' || column_name, ', ' ORDER BY table_name, column_name)
+    INTO v_stale
+    FROM cp_classification cl
+   WHERE NOT EXISTS (
+     SELECT 1 FROM cp_catalog cat
+      WHERE cat.table_name = cl.table_name AND cat.column_name = cl.column_name);
+  ASSERT v_stale IS NULL,
+    format('T08: the classification names foreign key(s) that no longer exist: %s', v_stale);
+
+  -- A `detach` column must be nullable, or ON DELETE SET NULL cannot fire and
+  -- the purge is refused instead of detaching. A `blocks` column is exactly
+  -- the case where that is already true.
+  SELECT string_agg(cat.table_name || '.' || cat.column_name, ', ')
+    INTO v_wrong
+    FROM cp_catalog cat
+    JOIN cp_classification cl
+      ON cl.table_name = cat.table_name AND cl.column_name = cat.column_name
+   WHERE (cl.disposition = 'detach' AND cat.not_null)
+      OR (cl.disposition = 'blocks' AND NOT cat.not_null);
+  ASSERT v_wrong IS NULL,
+    format('T08: the classification contradicts the schema for %s — a NOT NULL '
+           'column cannot be detached, and a nullable one does not block', v_wrong);
+
+  RAISE NOTICE 'T08 passed (all % foreign keys to contacts are classified)',
+    (SELECT COUNT(*) FROM cp_catalog);
 END $$;
 
 ROLLBACK;

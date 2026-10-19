@@ -29,6 +29,7 @@
 
 import { pool } from '@/lib/db'
 import { getQueue, QUEUES } from '@/lib/queue'
+import { purgeContactLinkRows } from '@/lib/contact-purge'
 
 const BATCH_SIZE = 100
 
@@ -44,15 +45,6 @@ const PURGEABLE_ENTITY_TYPES = [
 ] as const
 
 type PurgeableEntityType = (typeof PURGEABLE_ENTITY_TYPES)[number]
-
-/** Junction/child tables to clean up before deleting a contact */
-const CONTACT_JUNCTION_TABLES = [
-  'contact_tags', 'contact_group_members', 'dynamic_group_members',
-  'contact_credentials', 'contact_files', 'email_preferences',
-  'asset_contacts', 'kb_contributors', 'kb_permissions',
-  'service_owners', 'software_contacts', 'team_members',
-  'user_service_access', 'workspace_members',
-]
 
 interface RetentionPolicy {
   organization_id: string
@@ -292,11 +284,10 @@ async function purgeBatch(args: {
 
     let junctionRows = 0
     if (entityType === 'contacts') {
-      // Clean up junction tables first
-      for (const table of CONTACT_JUNCTION_TABLES) {
-        const j = await client.query(`DELETE FROM ${table} WHERE contact_id = ANY($1)`, [ids])
-        junctionRows += j.rowCount ?? 0
-      }
+      // Same definition of "purge a contact" the two admin routes use — the
+      // list of tables and the reason for each lives in lib/contact-purge.ts,
+      // because three copies of it is three chances to drift.
+      junctionRows = await purgeContactLinkRows(client, ids)
     }
 
     // Delete the entity records
