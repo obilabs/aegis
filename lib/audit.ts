@@ -262,3 +262,93 @@ export function logAudit(opts: AuditOptions): void {
     console.error('[audit] Failed to log event:', err.message)
   })
 }
+
+/**
+ * Append an audit row ON A CALLER-SUPPLIED CLIENT, inside the caller's
+ * transaction. Awaited, and it THROWS: either the row is written or the
+ * caller's transaction does not commit.
+ *
+ * ## Why this exists next to `logAudit`
+ *
+ * `logAudit` is fire-and-forget by design — it returns `void`, writes on the
+ * module pool (so always in a transaction of its own) and swallows its own
+ * failure into a console line. For "a technician viewed a ticket" that is the
+ * right trade: the audit row is a nice-to-have and must never slow or break
+ * the request.
+ *
+ * For an IRREVERSIBLE operation it is the failure mode itself. A hard delete
+ * whose audit write silently failed is exactly the state the audit log exists
+ * to prevent — the data is gone and nothing says what went or who asked. And
+ * because `logAudit` writes on a different connection, even a SUCCESSFUL write
+ * is not ordered against the operation: the "Log BEFORE deleting" comment that
+ * used to sit above an un-awaited call guaranteed nothing, and when the delete
+ * then failed the committed row claimed a purge that never happened.
+ *
+ * So destructive routes pass their own client and get the guarantee
+ * `lib/retention-purge.ts`, `lib/cascade-revoke.ts` and `lib/mtp-write.ts`
+ * already hold: the row and the deletion commit together, or neither does.
+ *
+ * Two details that are not optional:
+ *
+ *   * The chain columns (`chain_seq`, `hash_version`, `previous_hash`,
+ *     `record_hash`) are absent from the statement. Migration 099's
+ *     BEFORE INSERT trigger fills them and it is the only thing entitled to.
+ *   * An INSERT reporting zero affected rows is treated as a failure. That is
+ *     the silent shape migration 099 was written to avoid (a rule that
+ *     swallows the write and reports success), and a destructive route must
+ *     not proceed on the strength of a reported success.
+ */
+export async function logAuditOnClient(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rowCount: number | null }> },
+  opts: AuditOptions & { actorName?: string | null; actorEmail?: string | null },
+): Promise<void> {
+  const {
+    orgId, userId, action, actionCategory, entityType,
+    entityId, entityName, oldValues, newValues,
+    actorIp, success = true, errorMessage,
+    actorName, actorEmail,
+  } = opts
+
+  let changedFields: string[] | null = null
+  if (oldValues && newValues) {
+    changedFields = Object.keys(newValues).filter(
+      key => JSON.stringify(oldValues[key]) !== JSON.stringify(newValues[key])
+    )
+  }
+
+  const res = await client.query(
+    `INSERT INTO audit_log (
+       organization_id, actor_type, user_id, actor_name, actor_email, actor_ip,
+       action, action_category, entity_type, entity_id, entity_name,
+       old_values, new_values, changed_fields,
+       success, error_message
+     ) VALUES (
+       $1, 'user', $2, $3, $4,
+       $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+     )`,
+    [
+      orgId,
+      userId && AUDIT_UUID_RE.test(userId) ? userId : null,
+      actorName ?? null,
+      actorEmail ?? null,
+      actorIp || null,
+      action,
+      actionCategory,
+      entityType,
+      entityId || null,
+      entityName || null,
+      oldValues ? JSON.stringify(oldValues) : null,
+      newValues ? JSON.stringify(newValues) : null,
+      changedFields,
+      success,
+      errorMessage || null,
+    ],
+  )
+
+  if (res.rowCount !== 1) {
+    throw new Error(
+      `[audit] Audit row for '${action}' was not written (INSERT affected ${res.rowCount} rows); ` +
+      `the caller's transaction must not commit.`
+    )
+  }
+}

@@ -146,3 +146,9 @@ jobs:
         # issues the right statements; only Postgres can show that a purge
         # whose audit write fails leaves the data where it was.
         run: psql -v ON_ERROR_STOP=1 -f database/tests/retention-purge-audit.integration.test.sql
+
+      - name: Contact purge records what it destroys
+        # The manually triggered siblings of the retention purge, and the ones
+        # a human can reach today. Same proof: a trigger that raises on the
+        # real audit INSERT, then check the contacts are still there.
+        run: psql -v ON_ERROR_STOP=1 -f database/tests/contact-purge-audit.integration.test.sql
