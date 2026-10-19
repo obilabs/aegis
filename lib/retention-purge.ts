@@ -29,7 +29,7 @@
 
 import { pool } from '@/lib/db'
 import { getQueue, QUEUES } from '@/lib/queue'
-import { purgeContactLinkRows } from '@/lib/contact-purge'
+import { countContactAnonymisations, purgeContactLinkRows } from '@/lib/contact-purge'
 
 const BATCH_SIZE = 100
 
@@ -283,11 +283,21 @@ async function purgeBatch(args: {
     await client.query('BEGIN')
 
     let junctionRows = 0
+    let anonymisedRows = 0
+    let anonymisedByColumn: Record<string, number> = {}
     if (entityType === 'contacts') {
       // Same definition of "purge a contact" the two admin routes use — the
       // list of tables and the reason for each lives in lib/contact-purge.ts,
       // because three copies of it is three chances to drift.
       junctionRows = await purgeContactLinkRows(client, ids)
+
+      // The records that survive the person with their link nulled (migration
+      // 100). Counted before the DELETE, because afterwards nothing can say
+      // which rows they were — and for a purge nobody watched, the audit row is
+      // the only account of it there will ever be.
+      const anonymised = await countContactAnonymisations(client, ids)
+      anonymisedRows = anonymised.total
+      anonymisedByColumn = anonymised.byColumn
     }
 
     // Delete the entity records
@@ -313,6 +323,8 @@ async function purgeBatch(args: {
           retention_days: retentionDays,
           batch_offset: batchOffset,
           junction_rows: junctionRows,
+          anonymised_rows: anonymisedRows,
+          anonymised_by_column: anonymisedByColumn,
           // Which rows, not just how many. Reconstructing "what did the 2am job
           // destroy" from a count alone is not possible.
           entity_ids: ids,

@@ -37,15 +37,32 @@
  * `detach`  — the row is about something that happened and survives the
  *            person; the FK's `ON DELETE SET NULL` nulls the link and the row
  *            stays. Nothing to do at purge time.
- * `blocks`  — `NOT NULL` column with an `ON DELETE SET NULL` foreign key, and
- *            not cleaned up: Postgres cannot null it, so it REFUSES the parent
- *            delete and the contact cannot be purged at all. This is a bug, not
- *            a policy — recorded here because the shape of the bug is "nobody
- *            decided", and left to its own change because whether such a row
- *            should be deleted, anonymised, or block the purge with a clear
- *            explanation is a retention decision rather than a typo.
+ *
+ * There is no third disposition. There used to be a `blocks` one, for the five
+ * columns that were `NOT NULL` with an `ON DELETE SET NULL` foreign key and no
+ * purge path cleaning them up: Postgres cannot null such a column, so it
+ * refused the parent delete and the contact could not be purged at all —
+ * anyone ever named on an access request, an asset request or an offboarding
+ * request was undeletable, and the admin got a 500. That was a DDL
+ * contradiction rather than a decision, and "we cannot delete this person" is
+ * not an answer a product should give by accident.
+ *
+ * Migration 100 settled it as an anonymisation: those columns are nullable now,
+ * so the link goes with the person and the record stays — the disposition
+ * nine other foreign keys to `contacts` already take, and the thing their
+ * `ON DELETE SET NULL` always claimed to do. The full reasoning, including why
+ * deleting the rows and why refusing the purge were both rejected, is in the
+ * migration's header.
+ *
+ * Because an unexplained null would then be indistinguishable from an erased
+ * one, each of those five columns has a companion `*_erased_at` stamp
+ * (`erasedAtColumn` below), a CHECK that the link may be absent only when
+ * stamped, and a trigger that stamps it as the FK nulls the link. So the shape
+ * of the old bug — a `NOT NULL` column with an `ON DELETE SET NULL` foreign key
+ * that the purge does not delete — is now checked against the live schema by
+ * T08 rather than recorded in a list here.
  */
-export type ContactLinkDisposition = 'delete' | 'detach' | 'blocks'
+export type ContactLinkDisposition = 'delete' | 'detach'
 
 export interface ContactLinkColumn {
   table: string
@@ -53,6 +70,14 @@ export interface ContactLinkColumn {
   disposition: ContactLinkDisposition
   /** Why this disposition and not another. Read before changing one. */
   why: string
+  /**
+   * For a `detach` column that was `NOT NULL` until migration 100: the
+   * timestamp column the database stamps as the link is nulled, so an erased
+   * link is never mistaken for one that was never filled in. Only these
+   * columns carry one — the other `detach` columns have been nullable since
+   * they were created and have nothing to disambiguate.
+   */
+  erasedAtColumn?: string
 }
 
 /**
@@ -88,12 +113,28 @@ export const CONTACT_LINK_COLUMNS: readonly ContactLinkColumn[] = [
   { table: 'contacts', column: 'reports_to_id', disposition: 'detach', why: 'other people keep their rows; they just report to nobody' },
   { table: 'users', column: 'contact_id', disposition: 'detach', why: 'the login account is handled by user offboarding, not by this purge' },
 
-  // ---- blocks: NOT NULL + SET NULL, so the delete is refused ------------------
-  { table: 'access_requests', column: 'requester_id', disposition: 'blocks', why: 'NOT NULL; the purge is refused by Postgres. Pending decision — see the type doc' },
-  { table: 'access_requests', column: 'for_contact_id', disposition: 'blocks', why: 'NOT NULL; as above' },
-  { table: 'asset_requests', column: 'requester_id', disposition: 'blocks', why: 'NOT NULL; as above' },
-  { table: 'asset_requests', column: 'for_contact_id', disposition: 'blocks', why: 'NOT NULL; as above' },
-  { table: 'offboarding_requests', column: 'contact_id', disposition: 'blocks', why: 'NOT NULL; as above' },
+  // ---- detach, by the decision in migration 100 ------------------------------
+  // These five were the `blocks` cases: NOT NULL against an ON DELETE SET NULL
+  // foreign key, so the purge was refused outright. They hold approval
+  // decisions, fulfilments and termination dates — records of what was decided,
+  // which outlive the person exactly as a ticket does — and `legal_hold` already
+  // exists for the case where a person's records really must be kept. So the
+  // identity goes and the record stays, stamped with when that happened.
+  { table: 'access_requests', column: 'requester_id', disposition: 'detach',
+    erasedAtColumn: 'requester_erased_at',
+    why: 'the request and its approval decision are a record of work done; who asked is erased with them' },
+  { table: 'access_requests', column: 'for_contact_id', disposition: 'detach',
+    erasedAtColumn: 'for_contact_erased_at',
+    why: 'what access was granted, and by whom, must stay auditable; who it was for is erased' },
+  { table: 'asset_requests', column: 'requester_id', disposition: 'detach',
+    erasedAtColumn: 'requester_erased_at',
+    why: 'the approval chain and fulfilment are the provenance of the asset; who asked is erased' },
+  { table: 'asset_requests', column: 'for_contact_id', disposition: 'detach',
+    erasedAtColumn: 'for_contact_erased_at',
+    why: 'as above — the asset record needs the request, not the person' },
+  { table: 'offboarding_requests', column: 'contact_id', disposition: 'detach',
+    erasedAtColumn: 'contact_erased_at',
+    why: 'termination dates and the retrieval tasks hanging off this row are what was actually done; the person is erased' },
 ]
 
 /**
@@ -127,4 +168,59 @@ export async function purgeContactLinkRows(
     rows += res.rowCount ?? 0
   }
   return rows
+}
+
+/**
+ * The `detach` columns that carry an `*_erased_at` stamp — the five that used
+ * to make a contact undeletable. Derived, never hand-maintained.
+ */
+export const CONTACT_ERASURE_STAMPED_COLUMNS: readonly ContactLinkColumn[] =
+  CONTACT_LINK_COLUMNS.filter(c => c.erasedAtColumn !== undefined)
+
+export interface ContactAnonymisationCounts {
+  /** Total rows that will keep their record and lose their link to these contacts. */
+  total: number
+  /** `table.column` → row count, for the columns that have any. */
+  byColumn: Record<string, number>
+}
+
+/**
+ * Count the request rows whose link to these contacts the purge is about to
+ * null, BEFORE it happens — afterwards the links are gone and the question is
+ * unanswerable.
+ *
+ * This exists because "what happened to the person's data" has two halves and
+ * the purge's audit row only recorded one. `junction_rows` says what was
+ * destroyed; without this, the records that were anonymised instead — the ones
+ * that used to make the purge impossible — were the silent half. An erasure
+ * request answered with "and three request records were anonymised, here is
+ * when" is a different quality of answer from one answered with a count of
+ * deleted junction rows.
+ *
+ * One round trip: a UNION ALL built from the classification, so a column added
+ * there is counted here without anyone remembering to.
+ */
+export async function countContactAnonymisations(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: { col: string; n: string | number }[] }> },
+  contactIds: string[],
+): Promise<ContactAnonymisationCounts> {
+  if (CONTACT_ERASURE_STAMPED_COLUMNS.length === 0 || contactIds.length === 0) {
+    return { total: 0, byColumn: {} }
+  }
+
+  const sql = CONTACT_ERASURE_STAMPED_COLUMNS.map(c =>
+    `SELECT '${c.table}.${c.column}' AS col, COUNT(*) AS n ` +
+    `FROM ${c.table} WHERE ${c.column} = ANY($1)`,
+  ).join(' UNION ALL ')
+
+  const res = await client.query(sql, [contactIds])
+
+  const byColumn: Record<string, number> = {}
+  let total = 0
+  for (const row of res.rows) {
+    const n = Number(row.n)
+    if (n > 0) byColumn[row.col] = n
+    total += n
+  }
+  return { total, byColumn }
 }
