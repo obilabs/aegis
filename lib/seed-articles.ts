@@ -7,7 +7,10 @@ const CATEGORY_NAME = 'Aegis Admin Guide'
 // call. Rows with matching content_version are left alone.
 // Bumped to 10 (2026-08-16) for `msp-write-access-to-your-tickets`, added with
 // the MSP write path. Existing installs pick it up via POST /api/admin/kb/reseed.
-const CONTENT_VERSION = 11
+// Bumped to 12 (2026-10-19) for `contact-permanent-deletion`, added with
+// migration 100 — the article an admin answering an erasure request needs, and
+// the one their auditor will ask for.
+const CONTENT_VERSION = 12
 
 interface SystemArticle {
   slug: string
@@ -1506,6 +1509,42 @@ const SYSTEM_ARTICLES: SystemArticle[] = [
 <h3>Turning it off</h3>
 <p>Remove the <code>tickets:write</code> scope from the pairing key to stop writes while keeping reporting. Revoke the key entirely to end the relationship &mdash; that cascade also removes the credentials and accounts issued underneath it.</p>`,
     contentPlain: `Letting your MSP reply to tickets. If you paired this installation with an external IT provider (MSP), you can let their technicians reply to, re-status, and assign your tickets without sharing a login. You grant it and can take it back: write access is a scope on the pairing key called tickets:write, chosen when you issue the key in Settings > API Keys (MTP pairing key type). Without it the MSP can read only, and every write is refused server-side, not just hidden in their UI. With it they can comment, change status, and assign. You can remove just the write scope and leave the pairing in place. Every action names a specific human: the pairing key identifies the firm and is never sufficient alone; each write must carry the email of the specific technician, supplied by their portal from that person's signed-in session, so it cannot be typed or forged. Writes without it are rejected. Public replies vs internal notes: a public reply is part of the conversation and the requester sees it; an internal note is staff-only and the requester never sees it. Which one must be stated explicitly on every write - there is no default. One MSP's internal notes are hidden from any other paired MSP unless you opt them into sharing. Where to look afterwards: replies appear in the ticket thread attributed to the technician; status and assignment changes appear in ticket history with the acting technician; every write is recorded in the audit log. All written in the same transaction as the change, so a change cannot exist without its audit trail. What an MSP still cannot do: reassign outside your organization, delete tickets or replies, change routing directly (escalation only), or act at all after you revoke the pairing, which also disables accounts they provisioned. Turning it off: remove tickets:write to stop writes while keeping reporting; revoke the key to end the relationship, cascading to credentials and accounts issued underneath it.`,
+  },
+  {
+    slug: 'contact-permanent-deletion',
+    title: 'What permanent deletion of a contact actually removes',
+    // 'internal': this is the article an admin reads while answering an
+    // erasure request, and the one they hand their auditor. End users do not
+    // reach this surface.
+    visibility: 'internal',
+    summary:
+      'What a permanent delete destroys, what it keeps with the person removed from it, what still blocks it, and where the record of the deletion lives afterwards.',
+    content: `<h2>What permanent deletion of a contact actually removes</h2>
+<p>Deleting a contact in Aegis happens in two stages. A <strong>soft delete</strong> marks the person as deleted and hides them from active lists; everything is still there and it can be undone. A <strong>permanent delete</strong> (a purge) destroys the contact record itself and cannot be undone. Only a soft-deleted contact can be purged, and only an admin can do it.</p>
+
+<h3>The three things a purge can do with a linked record</h3>
+<p>Dozens of tables point at a contact, and they do not all mean the same thing, so a purge does not treat them the same way.</p>
+<ul>
+<li><strong>Removed with the person.</strong> Rows that mean nothing without them: group and team memberships, tags, credential links, file attachments, email preferences, service ownerships, KB permissions. A membership of nobody is not history, it is residue, and residue is exactly what an erasure request is asking you to remove.</li>
+<li><strong>Kept, with the person removed from it.</strong> Records of things that actually happened and that outlive whoever was involved: tickets and their history, assets and their assignments, projects, AI chat transcripts, access requests, asset requests, offboarding requests. The record stays and its link to the person is cleared.</li>
+<li><strong>Refused.</strong> A contact under <strong>legal hold</strong> cannot be purged at all, by an admin or by the retention schedule. That is the deliberate switch for "this person's records must be kept" &mdash; a litigation hold, a regulatory retention period, an open investigation. Nothing else refuses a purge.</li>
+</ul>
+
+<h3>"Kept, with the person removed" is not the same as a blank field</h3>
+<p>On the three request types &mdash; access requests, asset requests and offboarding requests &mdash; the record also carries the <em>date its link was erased</em>. So a request whose requester is blank is never ambiguous: either it was always blank, or it says when that person was erased from it. An auditor asking "what happened to this person's data" gets a date rather than a shrug.</p>
+<p>What survives on such a record is the decision, not the person: what was requested, who approved it, when it was fulfilled, and for an offboarding, the termination dates and the equipment that was retrieved. That is deliberate. Destroying the approval chain for a laptop because the person who asked for it has left would remove the asset's provenance, which nobody asked you to erase.</p>
+
+<h3>Where the record of the deletion lives</h3>
+<p>Every purge appends a <code>contact_purged</code> entry to the audit log, inside the same database transaction as the deletion. That means the two cannot disagree: if the entry cannot be written the deletion does not happen, and you get an error saying nothing was deleted rather than a success you cannot verify.</p>
+<p>The entry names the admin who asked, their IP, the contact, and a count of what went with them &mdash; how many linked rows were destroyed, and how many records were kept with the person removed. The audit log is append-only and hash-chained, so this entry cannot later be edited or quietly dropped.</p>
+<p>Note that the audit entry necessarily retains some identifying detail about the purged contact (their name and email), because a deletion record that cannot say who was deleted is not a deletion record. That entry is governed by your audit retention policy, not by the purge.</p>
+
+<h3>If a purge fails</h3>
+<p>Nothing is partially deleted. The whole operation is one transaction &mdash; a bulk purge of fifty contacts either removes all fifty and records all fifty, or removes none. An error message saying nothing was deleted means exactly that.</p>
+
+<h3>Automatic purges</h3>
+<p>If you have set a retention policy to <em>auto purge</em>, the same rules apply on a schedule, with the same audit entry written in the same transaction. The actor is recorded as the system rather than a person, because no human asked for that particular deletion &mdash; the policy did.</p>`,
+    contentPlain: `What permanent deletion of a contact actually removes. Deleting a contact happens in two stages. A soft delete marks the person deleted and hides them from active lists; everything is still there and it can be undone. A permanent delete (a purge) destroys the contact record and cannot be undone. Only a soft-deleted contact can be purged, and only an admin can do it. The three things a purge can do with a linked record: Removed with the person - rows that mean nothing without them: group and team memberships, tags, credential links, file attachments, email preferences, service ownerships, KB permissions. A membership of nobody is not history, it is residue, and residue is what an erasure request asks you to remove. Kept, with the person removed from it - records of things that happened and outlive whoever was involved: tickets and their history, assets and assignments, projects, AI chat transcripts, access requests, asset requests, offboarding requests. The record stays and its link to the person is cleared. Refused - a contact under legal hold cannot be purged at all, by an admin or by the retention schedule. That is the deliberate switch for "this person's records must be kept": litigation hold, regulatory retention, open investigation. Nothing else refuses a purge. "Kept, with the person removed" is not a blank field: on access requests, asset requests and offboarding requests the record also carries the date its link was erased, so a blank requester is never ambiguous - either it was always blank, or it says when that person was erased from it. What survives is the decision, not the person: what was requested, who approved it, when it was fulfilled, and for an offboarding the termination dates and the equipment retrieved. Destroying the approval chain for a laptop because the person who asked has left would remove the asset's provenance, which nobody asked you to erase. Where the record of the deletion lives: every purge appends a contact_purged entry to the audit log inside the same transaction as the deletion, so the two cannot disagree - if the entry cannot be written the deletion does not happen and you get an error saying nothing was deleted. The entry names the admin who asked, their IP, the contact, and counts of what went with them: linked rows destroyed, and records kept with the person removed. The audit log is append-only and hash-chained. The audit entry necessarily retains the purged contact's name and email, because a deletion record that cannot say who was deleted is not a deletion record; it is governed by your audit retention policy, not by the purge. If a purge fails nothing is partially deleted: the whole operation is one transaction, so a bulk purge of fifty contacts removes and records all fifty or none. Automatic purges: a retention policy set to auto purge applies the same rules on a schedule with the same audit entry in the same transaction, with the actor recorded as the system rather than a person, because no human asked for that deletion - the policy did.`,
   },
 ]
 

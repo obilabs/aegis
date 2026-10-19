@@ -28,7 +28,10 @@ vi.mock('@/lib/org', () => ({ getAuthContext: vi.fn() }))
 vi.mock('@/lib/access', () => ({ isAdminRequest: vi.fn() }))
 
 import { getAuthContext } from '@/lib/org'
-import { CONTACT_PURGE_DELETE_TABLES } from '@/lib/contact-purge'
+import {
+  CONTACT_ERASURE_STAMPED_COLUMNS,
+  CONTACT_PURGE_DELETE_TABLES,
+} from '@/lib/contact-purge'
 import { isAdminRequest } from '@/lib/access'
 import { DELETE as purgeOne } from './[id]/purge/route'
 import { POST as purgeBulk } from './bulk/purge/route'
@@ -79,6 +82,19 @@ function mockClient(opts: {
       }
       if (sql.startsWith('DELETE FROM contacts')) {
         return { rows: [], rowCount: opts.deleted ?? 1 }
+      }
+      // countContactAnonymisations: one UNION ALL over the stamped columns.
+      // Answered with a row per column so the routes have something real to
+      // put in the payload — a fake that returned nothing here would let an
+      // always-zero count pass unnoticed.
+      if (sql.includes('UNION ALL') && sql.includes('COUNT(*)')) {
+        return {
+          rows: CONTACT_ERASURE_STAMPED_COLUMNS.map((c, i) => ({
+            col: `${c.table}.${c.column}`,
+            n: i === 0 ? '2' : '0',
+          })),
+          rowCount: CONTACT_ERASURE_STAMPED_COLUMNS.length,
+        }
       }
       return { rows: [], rowCount: 0 }
     }),
@@ -150,6 +166,38 @@ describe('DELETE /api/portal/admin/contacts/[id]/purge', () => {
     const poolAudits = query.mock.calls.filter(([sql]) =>
       String(sql).includes('INSERT INTO audit_log'))
     expect(poolAudits).toHaveLength(0)
+  })
+
+  it('counts what is anonymised BEFORE the delete nulls the links', async () => {
+    // Until migration 100 a contact named on an access, asset or offboarding
+    // request could not be purged at all: those FKs were ON DELETE SET NULL
+    // against NOT NULL columns, so Postgres refused the delete and this route
+    // answered 500 forever. Those records are anonymised now, and the trail
+    // has to say so — "what happened to this person's data" has two halves,
+    // and the payload used to carry only the destroyed one.
+    //
+    // The ordering is the whole test. Counting after the DELETE would report
+    // zero every time and nothing would look wrong: the audit row would simply
+    // claim nothing was anonymised.
+    const { client, calls } = mockClient()
+    connect.mockResolvedValue(client)
+
+    await purgeOne(oneReq(), params)
+
+    const order = sqlOf(calls)
+    const count = order.findIndex(s => s.includes('COUNT(*)'))
+    const del = order.findIndex(s => s.startsWith('DELETE FROM contacts'))
+    expect(count).toBeGreaterThan(-1)
+    expect(count).toBeLessThan(del)
+
+    const audit = auditCalls(calls)[0]
+    const payload = JSON.parse(
+      audit.params.find(p => typeof p === 'string' && p.startsWith('{')) as string,
+    )
+    expect(payload.anonymised_rows).toBe(2)
+    expect(payload.anonymised_by_column).toEqual({
+      [`${CONTACT_ERASURE_STAMPED_COLUMNS[0].table}.${CONTACT_ERASURE_STAMPED_COLUMNS[0].column}`]: 2,
+    })
   })
 
   it('records the actor, the contact and the payload in new_values', async () => {
@@ -237,6 +285,29 @@ describe('POST /api/portal/admin/contacts/bulk/purge', () => {
 
   beforeEach(() => {
     query.mockResolvedValue({ rows, rowCount: rows.length })
+  })
+
+  it('counts what is anonymised before the delete on this path too', async () => {
+    // Parity with the single route, asserted rather than assumed: one shared
+    // helper is what makes the two paths agree, and this is the test that
+    // notices when only one of them calls it.
+    const { client, calls } = mockClient({ deleted: ids.length })
+    connect.mockResolvedValue(client)
+
+    await purgeBulk(bulkReq(ids))
+
+    const order = sqlOf(calls)
+    const count = order.findIndex(s => s.includes('COUNT(*)'))
+    const del = order.findIndex(s => s.startsWith('DELETE FROM contacts'))
+    expect(count).toBeGreaterThan(-1)
+    expect(count).toBeLessThan(del)
+
+    for (const audit of auditCalls(calls)) {
+      const payload = JSON.parse(
+        audit.params.find(p => typeof p === 'string' && p.startsWith('{')) as string,
+      )
+      expect(payload.batch_anonymised_rows).toBe(2)
+    }
   })
 
   it('writes one audit row per contact, all inside the one transaction', async () => {

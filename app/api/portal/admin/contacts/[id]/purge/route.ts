@@ -2,7 +2,7 @@ import { pool } from '@/lib/db'
 import { isAdminRequest } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { logAuditOnClient, getClientIp } from '@/lib/audit'
-import { purgeContactLinkRows } from '@/lib/contact-purge'
+import { countContactAnonymisations, purgeContactLinkRows } from '@/lib/contact-purge'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -18,9 +18,15 @@ import { NextRequest, NextResponse } from 'next/server'
  * transaction. That had a failure in each direction: an audit write that failed
  * was swallowed into a console line while the contact was destroyed and the
  * route answered 204, and a DELETE that failed left a committed `contact_purged`
- * row describing a purge that never happened (reproducible today — a contact
- * named on an `access_requests` row cannot be deleted, because that FK is
- * ON DELETE SET NULL against a NOT NULL column; see lib/contact-purge.ts).
+ * row describing a purge that never happened.
+ *
+ * Until migration 100 a contact named on an `access_requests`, `asset_requests`
+ * or `offboarding_requests` row could not be deleted at all — those FKs were
+ * ON DELETE SET NULL against NOT NULL columns, so Postgres refused the parent
+ * delete and this route answered 500 forever. Those records are anonymised now
+ * rather than deleted or blocking, and the audit payload reports how many of
+ * them lost their link alongside what was destroyed outright. The reasoning is
+ * in lib/contact-purge.ts and the migration header.
  */
 
 export async function DELETE(
@@ -78,6 +84,10 @@ export async function DELETE(
       // transaction. Which tables those are, and why, is lib/contact-purge.ts.
       const junctionRows = await purgeContactLinkRows(client, [id])
 
+      // What the person's departure anonymises rather than destroys, counted
+      // before the DELETE nulls the links and makes it unknowable.
+      const anonymised = await countContactAnonymisations(client, [id])
+
       // Delete the contact
       const del = await client.query('DELETE FROM contacts WHERE id = $1', [id])
       deleted = del.rowCount ?? 0
@@ -103,6 +113,8 @@ export async function DELETE(
           last_name: contact.last_name,
           contact_type: contact.contact_type,
           junction_rows: junctionRows,
+          anonymised_rows: anonymised.total,
+          anonymised_by_column: anonymised.byColumn,
         },
         actorIp: getClientIp(request.headers),
       })
