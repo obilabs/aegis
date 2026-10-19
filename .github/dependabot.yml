@@ -5,6 +5,19 @@ updates:
     schedule: { interval: weekly }
     groups:
       actions: { patterns: ["*"] }
+  # Transitive security alerts do NOT arrive as a PR here, they arrive as a RED
+  # "Dependabot Updates" run on main. The security job is scoped to
+  # dependency-type: direct, and for pnpm Dependabot will not write a
+  # pnpm.overrides entry on our behalf, so a vulnerable package we do not depend
+  # on directly ends the job with `security_update_not_possible` and a reported
+  # `latest-resolvable-version` equal to whatever is already in the lockfile.
+  # That number is Dependabot's own ceiling, not a real resolution constraint:
+  # on 2026-10-18 it called axios 1.19.0 the ceiling while @sendgrid/client
+  # declares ^1.12.0, and a plain pnpm.overrides floor resolved 1.20.0.
+  #
+  # The fix is always ours to make: add the patched floor to pnpm.overrides in
+  # package.json, re-resolve, and the alert closes. Do not go looking for a
+  # broken manifest, an unreachable registry or a missing secret.
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
