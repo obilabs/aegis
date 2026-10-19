@@ -13,6 +13,40 @@
 
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser'
 
+/**
+ * Upper bound on the RFC 822 header section we will hand to `simpleParser`.
+ *
+ * `simpleParser` parses every address header with nodemailer's addressparser,
+ * and the cost of that parse has repeatedly turned out to be super-linear in
+ * the length of a single header value (nodemailer shipped addressparser
+ * complexity fixes in 9.1.0, 10.0.5, 10.0.6 and 10.0.9). The parse is
+ * synchronous, so a slow one does not merely delay this call — it blocks the
+ * worker's event loop, and a `Promise.race` timeout around `parseEmail` does
+ * not help: the timer cannot fire while the loop is blocked.
+ *
+ * The only guard that works is refusing the input before parsing it, so we
+ * bound the header section independently of the pinned nodemailer version.
+ * 256 KiB is far above anything legitimate — a long `Received:` chain plus a
+ * few hundred `Cc:` recipients lands well under 32 KiB — while keeping the
+ * worst case for any future regression bounded by a constant.
+ */
+export const MAX_HEADER_SECTION_BYTES = 256 * 1024
+
+/**
+ * Byte length of the header section: the offset of the blank line that
+ * separates headers from body, so the header text without its final line
+ * ending. Returns the whole length when there is no body separator, which is
+ * itself a malformed message the caller should reject.
+ */
+export function headerSectionBytes(raw: Buffer | string): number {
+  const buf = typeof raw === 'string' ? Buffer.from(raw, 'utf8') : raw
+  // RFC 822 separator is CRLF CRLF; tolerate bare LF LF from lax senders.
+  const crlf = buf.indexOf('\r\n\r\n')
+  const lf = buf.indexOf('\n\n')
+  const ends = [crlf, lf].filter(i => i !== -1)
+  return ends.length ? Math.min(...ends) : buf.length
+}
+
 export interface ParsedAttachment {
   /** The ContentDisposition filename or generated fallback. */
   filename: string
@@ -96,10 +130,17 @@ function lowercaseHeaders(parsed: ParsedMail): Record<string, string | string[] 
 
 /**
  * Parse a raw RFC 822 email (IMAP fetch payload) into the ParsedEmail shape.
- * Throws on malformed MIME — caller catches and writes status='failed_parse'
- * to the ingest log.
+ * Throws on malformed MIME, and on a header section over
+ * MAX_HEADER_SECTION_BYTES — caller catches both and writes
+ * status='failed_parse' to the ingest log.
  */
 export async function parseEmail(raw: Buffer | string): Promise<ParsedEmail> {
+  const headerBytes = headerSectionBytes(raw)
+  if (headerBytes > MAX_HEADER_SECTION_BYTES) {
+    throw new Error(
+      `header section ${headerBytes} bytes exceeds ${MAX_HEADER_SECTION_BYTES}`,
+    )
+  }
   const parsed = await simpleParser(raw)
   const rawSize = typeof raw === 'string' ? Buffer.byteLength(raw, 'utf8') : raw.length
 

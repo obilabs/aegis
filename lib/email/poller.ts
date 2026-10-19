@@ -194,6 +194,21 @@ async function handleMailboxPoll(mailboxId: string): Promise<void> {
   }
 
   for (const fetched of pollResult.messages) {
+    // Size guard — runs on the raw fetch, BEFORE parsing. It used to read
+    // parsed.rawSizeBytes, which meant an oversized message was fully parsed
+    // and only then rejected, so the limit never actually protected the parse.
+    const sizeLimit = Number(mailbox.attachment_size_limit_bytes) * 4
+    if (fetched.source.length > sizeLimit) {
+      await logIngest(mailbox, fetched.source.length, null, null, {
+        status: 'rejected_size',
+        match_path: null,
+        signature_validated: null,
+        sender_authorized: null,
+        rejection_reason: `raw size ${fetched.source.length} > 4× attachment_size_limit_bytes`,
+      })
+      continue
+    }
+
     let parsed: ParsedEmail
     try {
       parsed = await parseEmail(fetched.source)
@@ -204,18 +219,6 @@ async function handleMailboxPoll(mailboxId: string): Promise<void> {
         signature_validated: null,
         sender_authorized: null,
         parse_error: errMsg(err),
-      })
-      continue
-    }
-
-    // Size guard
-    if (parsed.rawSizeBytes > Number(mailbox.attachment_size_limit_bytes) * 4) {
-      await logIngest(mailbox, parsed.rawSizeBytes, parsed, null, {
-        status: 'rejected_size',
-        match_path: null,
-        signature_validated: null,
-        sender_authorized: null,
-        rejection_reason: `raw size ${parsed.rawSizeBytes} > 4× attachment_size_limit_bytes`,
       })
       continue
     }
