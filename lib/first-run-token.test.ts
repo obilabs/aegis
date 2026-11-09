@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +14,9 @@ import {
 
 describe('first-run setup token', () => {
   let dir: string
-  let log: ReturnType<typeof vi.spyOn>
+  // Vitest 4 narrowed vi.spyOn's unparameterised return type, so
+  // ReturnType<typeof vi.spyOn> no longer carries console.log's signature.
+  let log: MockInstance<typeof console.log>
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aegis-setup-token-'))
