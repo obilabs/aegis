@@ -87,12 +87,19 @@ jobs:
         run: pnpm test
 
   database:
-    name: Database contract (audit immutability)
+    name: Database contract
     runs-on: ubuntu-latest
-    # The audit trail's append-only guarantee is enforced by triggers, an ACL
-    # and a hash chain — none of which a typecheck or a vitest can exercise.
-    # It has to run against a real Postgres, on a schema built the way a fresh
-    # install builds it, or "append-only" is back to being a claim.
+    # Guarantees enforced by triggers, ACLs, constraints and hash chains —
+    # none of which a typecheck or a vitest can exercise. They have to run
+    # against a real Postgres, on a schema built the way a fresh install
+    # builds it, or each one is back to being a claim.
+    #
+    # This job runs EVERY file in database/tests/. It used to name three of
+    # them, and that is how `mtp-pairings.integration.test.sql` spent four
+    # months testing a table migration 092 had dropped: it failed on every
+    # fresh database and nothing ever ran it. A hand-maintained list of the
+    # tests to run is a second source of truth for "what is tested", and it
+    # drifts the moment someone adds a file.
     services:
       postgres:
         # pgvector, because init.sql declares `CREATE EXTENSION vector` and
@@ -137,18 +144,37 @@ jobs:
             psql -q -c "INSERT INTO schema_migrations (version) VALUES ('$name');"
           done
 
-      - name: Audit-log immutability + hash chain
-        run: psql -v ON_ERROR_STOP=1 -f database/tests/audit-immutability.integration.test.sql
+      - name: Seed the minimum a test may assume
+        # Most test files create their own fixtures, but a few read the one
+        # organisation an installed Aegis always has. A fresh schema has none,
+        # so they cannot run on a bare database without this. Two rows, and
+        # every test is still wrapped in BEGIN/ROLLBACK.
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -q -c "INSERT INTO organizations (name) VALUES ('CI fixture org');"
+          psql -v ON_ERROR_STOP=1 -q -c "INSERT INTO users (organization_id, email, first_name, last_name) SELECT id, 'ci-fixture@example.test', 'CI', 'Fixture' FROM organizations WHERE name = 'CI fixture org';"
 
-      - name: Retention purge records what it destroys
-        # Same reason: the guarantee is a transaction boundary plus a real
-        # audit-write rejection. A vitest can check that lib/retention-purge.ts
-        # issues the right statements; only Postgres can show that a purge
-        # whose audit write fails leaves the data where it was.
-        run: psql -v ON_ERROR_STOP=1 -f database/tests/retention-purge-audit.integration.test.sql
-
-      - name: Contact purge records what it destroys
-        # The manually triggered siblings of the retention purge, and the ones
-        # a human can reach today. Same proof: a trigger that raises on the
-        # real audit INSERT, then check the contacts are still there.
-        run: psql -v ON_ERROR_STOP=1 -f database/tests/contact-purge-audit.integration.test.sql
+      - name: SQL integration tests
+        # Every file, discovered rather than listed. Runs them all and then
+        # fails, so one broken contract does not hide the others.
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          files=( database/tests/*.integration.test.sql )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no SQL integration tests found — database/tests/ is empty or renamed"
+            exit 1
+          fi
+          failures=0
+          for test in "${files[@]}"; do
+            echo "── $(basename "$test")"
+            if psql -v ON_ERROR_STOP=1 -q -f "$test"; then
+              echo "   PASS"
+            else
+              echo "::error file=${test}::SQL integration test failed"
+              failures=$((failures + 1))
+            fi
+          done
+          echo ""
+          echo "${#files[@]} file(s) run, ${failures} failed."
+          [ "${failures}" -eq 0 ]

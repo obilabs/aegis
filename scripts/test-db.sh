@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Run SQL integration tests against the running aegis_db container.
 #
-# Each test file lives in apps/aegis/database/tests/ and is wrapped in
+# Each test file lives in database/tests/ and is wrapped in
 # BEGIN/ROLLBACK so the DB is left untouched. PL/pgSQL ASSERT statements
 # fail fast with a clear message; psql -v ON_ERROR_STOP=1 propagates the
 # failure to a non-zero exit code.
 #
 # Usage:
-#   apps/aegis/scripts/test-db.sh                  # run all tests
-#   apps/aegis/scripts/test-db.sh audience         # run a specific test by name
+#   scripts/test-db.sh                  # run all tests
+#   scripts/test-db.sh audience         # run a specific test by name
 
 set -euo pipefail
 
