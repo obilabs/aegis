@@ -2,7 +2,7 @@ import { pool } from '@/lib/db'
 import { isAdminRequest } from '@/lib/access'
 import { getAuthContext } from '@/lib/org'
 import { logAuditOnClient, getClientIp } from '@/lib/audit'
-import { purgeContactLinkRows } from '@/lib/contact-purge'
+import { countContactAnonymisations, purgeContactLinkRows } from '@/lib/contact-purge'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -79,6 +79,11 @@ export async function POST(request: NextRequest) {
       // list, in lib/contact-purge.ts, so the two paths cannot drift.
       const junctionRows = await purgeContactLinkRows(client, purgeableIds)
 
+      // Counted before the DELETE, for the same reason as the single route: the
+      // records that are anonymised rather than destroyed are the half of the
+      // story the trail used to leave out.
+      const anonymised = await countContactAnonymisations(client, purgeableIds)
+
       const del = await client.query('DELETE FROM contacts WHERE id = ANY($1)', [purgeableIds])
       deleted = del.rowCount ?? 0
 
@@ -100,6 +105,8 @@ export async function POST(request: NextRequest) {
             batch_size: purgeableIds.length,
             batch_deleted: deleted,
             batch_junction_rows: junctionRows,
+            batch_anonymised_rows: anonymised.total,
+            batch_anonymised_by_column: anonymised.byColumn,
           },
           actorIp: getClientIp(request.headers),
         })

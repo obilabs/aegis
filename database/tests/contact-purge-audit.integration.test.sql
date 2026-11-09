@@ -15,9 +15,10 @@
 --
 --   * T03: the audit write fails; the old code destroyed the contacts anyway
 --     and answered 204 / `{purged: n}`.
---   * T04: the DELETE fails (which it really can — see below); the old code had
---     already committed a `contact_purged` row describing a purge that never
---     happened.
+--   * T04: the DELETE fails; the old code had already committed a
+--     `contact_purged` row describing a purge that never happened. The failure
+--     is induced the same way as T03's, because the schema reason it used to
+--     happen by itself was itself a bug and is fixed — see T04 and T09.
 --
 -- T03 is the load-bearing one and it is not mocked: a trigger RAISEs on the
 -- real INSERT, which is what a NOT NULL violation, a broken hash chain or a
@@ -42,8 +43,14 @@ BEGIN;
 --
 --   delete — the row is meaningless without the contact; the purge removes it
 --   detach — the row outlives the person; ON DELETE SET NULL nulls the link
---   blocks — NOT NULL + ON DELETE SET NULL and not cleaned up, so Postgres
---            REFUSES the parent delete (a bug, recorded, not a policy)
+--
+-- There is no third disposition. The five `blocks` rows this list used to carry
+-- (access_requests, asset_requests, offboarding_requests) were NOT NULL against
+-- an ON DELETE SET NULL foreign key, so Postgres refused the parent delete and
+-- the contact could not be purged at all. Migration 100 made them nullable with
+-- an `*_erased_at` stamp, which turns them into ordinary `detach` columns; T09
+-- pins that, and T08 now checks the schema for the SHAPE of that bug instead of
+-- keeping a list of its instances.
 --
 -- T08 compares this against pg_constraint, so a new column referencing
 -- `contacts` fails here until somebody classifies it.
@@ -73,11 +80,22 @@ INSERT INTO cp_classification (table_name, column_name, disposition) VALUES
   ('departments',            'head_contact_id',   'detach'),
   ('contacts',               'reports_to_id',     'detach'),
   ('users',                  'contact_id',        'detach'),
-  ('access_requests',        'requester_id',      'blocks'),
-  ('access_requests',        'for_contact_id',    'blocks'),
-  ('asset_requests',         'requester_id',      'blocks'),
-  ('asset_requests',         'for_contact_id',    'blocks'),
-  ('offboarding_requests',   'contact_id',        'blocks');
+  ('access_requests',        'requester_id',      'detach'),
+  ('access_requests',        'for_contact_id',    'detach'),
+  ('asset_requests',         'requester_id',      'detach'),
+  ('asset_requests',         'for_contact_id',    'detach'),
+  ('offboarding_requests',   'contact_id',        'detach');
+
+-- The `detach` columns that carry an erasure stamp, and the stamp's name. Same
+-- data as `erasedAtColumn` in lib/contact-purge.ts, which the TypeScript test
+-- checks against these rows.
+CREATE TEMP TABLE cp_erasure_stamps (table_name text, column_name text, stamp_column text);
+INSERT INTO cp_erasure_stamps (table_name, column_name, stamp_column) VALUES
+  ('access_requests',      'requester_id',   'requester_erased_at'),
+  ('access_requests',      'for_contact_id', 'for_contact_erased_at'),
+  ('asset_requests',       'requester_id',   'requester_erased_at'),
+  ('asset_requests',       'for_contact_id', 'for_contact_erased_at'),
+  ('offboarding_requests', 'contact_id',     'contact_erased_at');
 
 -- ===========================================================================
 -- T01: single-contact purge, happy path. The transaction deletes the contact
@@ -362,24 +380,24 @@ BEGIN
 END $$;
 
 -- ===========================================================================
--- T04: the other direction, and it needs no simulation at all.
+-- T04: the other direction — a DELETE that fails must leave no audit row
+--      claiming it succeeded.
 --
---      `access_requests.requester_id` / `for_contact_id` are NOT NULL and
---      their FK to `contacts` is ON DELETE SET NULL, and neither route cleans
---      that table up. So deleting a contact named on an access request is
---      REFUSED by Postgres today:
+--      This used to need no simulation: `access_requests.requester_id` /
+--      `for_contact_id` were NOT NULL with an ON DELETE SET NULL foreign key,
+--      so deleting a contact named on an access request was refused outright
+--      and that was the fixture. That refusal was a bug — it made anyone named
+--      on a request permanently undeletable — and migration 100 fixed it, so
+--      the fixture is gone and T09 now pins the fix.
 --
---        null value in column "for_contact_id" of relation "access_requests"
---        violates not-null constraint
+--      The property is still worth pinning, because the next constraint that
+--      refuses a contact delete (a RESTRICT foreign key, a validation trigger,
+--      a check added in five years' time) must not produce a committed
+--      `contact_purged` row either. So the refusal is induced the way T03
+--      induces its failure: a trigger that raises on the real DELETE.
 --
---      The old routes had already committed the `contact_purged` row on
---      another connection before the DELETE ran, so the trail claimed a purge
---      that never happened and the caller got a 500. Writing the row inside
---      the transaction makes the two agree: no deletion, no row.
---
---      (The missing junction tables are a separate bug — this test pins the
---      audit behaviour, not the purge coverage.)
--- ===========================================================================
+--      Before the fix in #57 this input gave: one committed audit row (written
+--      on another connection, before the DELETE ran), nothing deleted, 500.
 DO $$
 DECLARE
   v_org_id uuid;
@@ -392,11 +410,20 @@ BEGIN
     RETURNING id INTO v_org_id;
 
   INSERT INTO contacts (organization_id, contact_type, first_name, last_name, is_deleted, deleted_at)
-    VALUES (v_org_id, 'employee', 'Blocked', 'ByRequest', true, NOW() - interval '1 day')
+    VALUES (v_org_id, 'employee', 'Blocked', 'ByConstraint', true, NOW() - interval '1 day')
     RETURNING id INTO v_c;
 
-  INSERT INTO access_requests (organization_id, requester_id, for_contact_id, requested_services)
-    VALUES (v_org_id, v_c, v_c, '[]'::jsonb);
+  -- Stand in for any constraint that refuses the delete.
+  EXECUTE $f$
+    CREATE OR REPLACE FUNCTION cp_test_refuse_delete() RETURNS trigger
+    LANGUAGE plpgsql AS $body$
+    BEGIN
+      RAISE EXCEPTION 'simulated constraint refusing the contact delete'
+        USING ERRCODE = 'foreign_key_violation';
+    END $body$;
+  $f$;
+  EXECUTE 'CREATE TRIGGER trg_zz_cp_test_refuse_delete BEFORE DELETE ON contacts '
+          'FOR EACH ROW EXECUTE FUNCTION cp_test_refuse_delete()';
 
   v_caught := 'no error';
   BEGIN
@@ -411,13 +438,18 @@ BEGIN
       jsonb_build_object('email', 'blocked@purge-test.example'), true
     );
 
-    v_caught := 'DELETE SUCCEEDED (schema changed — revisit this test)';
-  EXCEPTION WHEN not_null_violation THEN
-    v_caught := 'not_null_violation';
+    v_caught := 'DELETE SUCCEEDED (the trigger did not fire — revisit this test)';
+  EXCEPTION WHEN foreign_key_violation THEN
+    -- The route's `catch { ROLLBACK; throw }`: nothing deleted, nothing
+    -- recorded, 500.
+    v_caught := 'refused';
   END;
 
-  ASSERT v_caught = 'not_null_violation',
-    format('T04: expected not_null_violation from access_requests, got: %s', v_caught);
+  EXECUTE 'DROP TRIGGER trg_zz_cp_test_refuse_delete ON contacts';
+  EXECUTE 'DROP FUNCTION cp_test_refuse_delete()';
+
+  ASSERT v_caught = 'refused',
+    format('T04: expected the delete to be refused, got: %s', v_caught);
 
   SELECT COUNT(*) INTO v_count FROM contacts WHERE id = v_c;
   ASSERT v_count = 1, 'T04: the contact went after all';
@@ -427,6 +459,25 @@ BEGIN
     FROM audit_log WHERE organization_id = v_org_id AND action = 'contact_purged';
   ASSERT v_audits = 0,
     format('T04: %s audit row(s) claim a purge that the database refused', v_audits);
+
+  -- Negative control: the SAME fixture, with nothing refusing, purges and
+  -- records. Without this, a T04 that passed because the fixture never
+  -- deletes anything would look identical to a T04 that passed because the
+  -- rollback works.
+  DELETE FROM contacts WHERE id = v_c;
+  INSERT INTO audit_log (
+    organization_id, actor_type, action, action_category,
+    entity_type, entity_id, new_values, success
+  ) VALUES (
+    v_org_id, 'user', 'contact_purged', 'delete', 'contacts', v_c,
+    jsonb_build_object('email', 'blocked@purge-test.example'), true
+  );
+
+  SELECT COUNT(*) INTO v_count FROM contacts WHERE id = v_c;
+  ASSERT v_count = 0, 'T04: the control delete did not work, so the test proves nothing';
+  SELECT COUNT(*) INTO v_audits
+    FROM audit_log WHERE organization_id = v_org_id AND action = 'contact_purged';
+  ASSERT v_audits = 1, format('T04: the control purge recorded %s rows', v_audits);
 
   RAISE NOTICE 'T04 passed (a refused delete leaves no audit row claiming otherwise)';
 END $$;
@@ -484,6 +535,14 @@ END $$;
 --     person. A purge that deleted those would be destroying history, which is
 --     the opposite failure.
 --
+-- The fixture includes the three request tables (`access_requests`,
+-- `asset_requests`, `offboarding_requests`), which is the whole point of
+-- migration 100: a contact named on one of those could not be purged by EITHER
+-- path before it — Postgres refused the delete and the admin got a 500 — so
+-- these two tests ran on a fixture that quietly excluded the hardest case. They
+-- now carry it, and the assertions below check both that the purge goes through
+-- and that each surviving row is stamped with when its link was erased.
+--
 -- The delete list is read from cp_classification, so the test cannot drift
 -- from the code's definition of a purge.
 -- ===========================================================================
@@ -493,7 +552,7 @@ CREATE FUNCTION cp_make_linked_contact(p_org uuid, p_label text)
 RETURNS uuid LANGUAGE plpgsql AS $fn$
 DECLARE
   v_c uuid; v_tag uuid; v_cg uuid; v_dg uuid; v_cred uuid; v_asset uuid;
-  v_svc uuid; v_sw uuid; v_ws uuid; v_team uuid;
+  v_svc uuid; v_sw uuid; v_ws uuid; v_team uuid; v_user uuid; v_tier uuid;
 BEGIN
   INSERT INTO contacts (organization_id, contact_type, first_name, last_name, is_deleted, deleted_at)
     VALUES (p_org, 'employee', p_label, 'Linked', true, NOW() - interval '1 day')
@@ -533,6 +592,29 @@ BEGIN
     VALUES (p_org, p_label || ' project', v_c);
   INSERT INTO contacts (organization_id, contact_type, first_name, last_name, reports_to_id)
     VALUES (p_org, 'employee', p_label, 'Reportee', v_c);
+
+  -- The three request tables: `detach` since migration 100, and the reason it
+  -- exists. Both contact columns point at the same person, so the purge has to
+  -- null two NOT-NULL-until-100 columns on one row.
+  SELECT id INTO v_user FROM users WHERE organization_id = p_org LIMIT 1;
+  IF v_user IS NULL THEN
+    INSERT INTO users (organization_id, email, first_name, last_name)
+      VALUES (p_org, p_label || '-admin@purge-test.example', 'Pat', 'Admin')
+      RETURNING id INTO v_user;
+  END IF;
+
+  INSERT INTO asset_request_tiers (organization_id, name, category)
+    VALUES (p_org, p_label || '-tier', 'laptop') RETURNING id INTO v_tier;
+
+  INSERT INTO access_requests (organization_id, requester_id, for_contact_id, requested_services)
+    VALUES (p_org, v_c, v_c, '[]'::jsonb);
+  INSERT INTO asset_requests (organization_id, requester_id, for_contact_id, tier_id)
+    VALUES (p_org, v_c, v_c, v_tier);
+  INSERT INTO offboarding_requests (
+    organization_id, contact_id, reason, last_working_day, access_termination_date, created_by
+  ) VALUES (
+    p_org, v_c, 'resignation', CURRENT_DATE, CURRENT_DATE, v_user
+  );
 
   RETURN v_c;
 END $fn$;
@@ -575,6 +657,31 @@ BEGIN
    WHERE organization_id = p_org AND contact_id IS NULL;
   ASSERT v_count = v_n,
     format('%s: expected %s detached asset(s), found %s', p_test, v_n, v_count);
+
+  -- The request records: still there, link gone, and stamped with when the
+  -- link went — so a reader can tell "this person was erased on that date"
+  -- from "somebody never filled this in", which a bare NULL cannot say.
+  --
+  -- Driven off cp_erasure_stamps, so a column given a stamp in
+  -- lib/contact-purge.ts without the fixture being extended fails here.
+  FOR r IN SELECT table_name, column_name, stamp_column FROM cp_erasure_stamps LOOP
+    EXECUTE format(
+      'SELECT COUNT(*) FROM %I WHERE organization_id = $1 AND %I IS NULL AND %I IS NOT NULL',
+      r.table_name, r.column_name, r.stamp_column)
+      INTO v_count USING p_org;
+    ASSERT v_count = v_n,
+      format('%s: expected %s anonymised row(s) in %s.%s, found %s — the record was '
+             'destroyed, kept its link, or was not stamped',
+             p_test, v_n, r.table_name, r.column_name, v_count);
+  END LOOP;
+
+  -- Anonymised, not emptied: the substance of the record is still readable.
+  SELECT COUNT(*) INTO v_count FROM offboarding_requests
+   WHERE organization_id = p_org
+     AND reason = 'resignation' AND last_working_day IS NOT NULL
+     AND request_number IS NOT NULL;
+  ASSERT v_count = v_n,
+    format('%s: %s of %s offboarding record(s) kept their substance', p_test, v_count, v_n);
 END $fn$;
 
 -- --- T06: the single-contact path -------------------------------------------
@@ -675,11 +782,22 @@ BEGIN
   CREATE TEMP TABLE cp_catalog AS
   SELECT c.conrelid::regclass::text AS table_name,
          a.attname::text            AS column_name,
-         a.attnotnull               AS not_null
+         a.attnotnull               AS not_null,
+         c.confdeltype::text         AS on_delete
     FROM pg_constraint c
     JOIN unnest(c.conkey) k ON true
     JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k
    WHERE c.contype = 'f' AND c.confrelid = 'contacts'::regclass;
+
+  -- The premise the dispositions rest on: every one of these is ON DELETE SET
+  -- NULL. If a future migration makes one RESTRICT (which CLAUDE.md's FK rule
+  -- would prefer), detaching stops working for it and the purge needs a
+  -- different answer — so say so here rather than letting the reasoning rot.
+  SELECT string_agg(table_name || '.' || column_name || ' (' || on_delete || ')', ', ')
+    INTO v_wrong FROM cp_catalog WHERE on_delete <> 'n';
+  ASSERT v_wrong IS NULL,
+    format('T08: %s no longer uses ON DELETE SET NULL. The dispositions in '
+           'lib/contact-purge.ts assume it; revisit them.', v_wrong);
 
   SELECT string_agg(table_name || '.' || column_name, ', ' ORDER BY table_name, column_name)
     INTO v_missing
@@ -701,22 +819,154 @@ BEGIN
   ASSERT v_stale IS NULL,
     format('T08: the classification names foreign key(s) that no longer exist: %s', v_stale);
 
-  -- A `detach` column must be nullable, or ON DELETE SET NULL cannot fire and
-  -- the purge is refused instead of detaching. A `blocks` column is exactly
-  -- the case where that is already true.
-  SELECT string_agg(cat.table_name || '.' || cat.column_name, ', ')
+  -- The shape of the bug migration 100 fixed, checked against the live schema
+  -- rather than against a list of its known instances.
+  --
+  -- Every foreign key to `contacts` is ON DELETE SET NULL (asserted above). On
+  -- a NOT NULL column that is a contradiction: Postgres tries the UPDATE, the
+  -- constraint rejects it, and the whole parent DELETE is refused. It is
+  -- survivable in exactly one case — the purge DELETEs the row first, so there
+  -- is nothing left to null — which is what `delete` means.
+  --
+  -- So: a NOT NULL foreign key to `contacts` must be classified `delete`.
+  -- Anything else is a person somebody cannot erase, and it fails here with the
+  -- column named instead of as a 500 in front of an admin.
+  SELECT string_agg(cat.table_name || '.' || cat.column_name || ' (' || cl.disposition || ')',
+                    ', ' ORDER BY cat.table_name, cat.column_name)
     INTO v_wrong
     FROM cp_catalog cat
     JOIN cp_classification cl
       ON cl.table_name = cat.table_name AND cl.column_name = cat.column_name
-   WHERE (cl.disposition = 'detach' AND cat.not_null)
-      OR (cl.disposition = 'blocks' AND NOT cat.not_null);
+   WHERE cat.not_null AND cl.disposition <> 'delete';
   ASSERT v_wrong IS NULL,
-    format('T08: the classification contradicts the schema for %s — a NOT NULL '
-           'column cannot be detached, and a nullable one does not block', v_wrong);
+    format('T08: %s — a NOT NULL column with an ON DELETE SET NULL foreign key to '
+           'contacts makes the contact impossible to purge, because Postgres '
+           'refuses the parent delete. Either the purge must DELETE the row '
+           '(disposition `delete`) or the column must become nullable with an '
+           'erasure stamp, the way migration 100 did it.', v_wrong);
 
-  RAISE NOTICE 'T08 passed (all % foreign keys to contacts are classified)',
-    (SELECT COUNT(*) FROM cp_catalog);
+  RAISE NOTICE 'T08 passed (% foreign keys to contacts classified, % of them NOT NULL and deleted)',
+    (SELECT COUNT(*) FROM cp_catalog),
+    (SELECT COUNT(*) FROM cp_catalog WHERE not_null);
+END $$;
+
+-- ===========================================================================
+-- T09: the decision in migration 100, and the ways of getting it wrong.
+--
+-- A contact named on an access request, an asset request or an offboarding
+-- request used to be impossible to delete. T06/T07 already show that the purge
+-- now goes through and leaves a stamped, anonymised record; this test is about
+-- the cheaper fixes that would ALSO make T06/T07 pass, and must not:
+--
+--   * dropping NOT NULL and stopping there. Then a null link is ambiguous
+--     (erased, or never filled in?) and nothing stops a new request being
+--     written with no requester at all. The CHECK is what rules that out, and
+--     the first control below is an INSERT that must still be refused.
+--   * keeping the stamp but letting it be cleared, which would un-explain an
+--     already-anonymised row. The second control pins that.
+--
+-- The third control is the discriminator for the whole exercise: with the
+-- stamping trigger disabled the purge is REFUSED again — the exact failure
+-- admins used to get — so T06/T07 pass because of this mechanism and not
+-- because the fixture happens to be purgeable.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_org    uuid;
+  v_c      uuid;
+  v_u      uuid;
+  v_tier   uuid;
+  v_caught text;
+  v_count  int;
+  v_stamp  timestamptz;
+  r        record;
+BEGIN
+  INSERT INTO organizations (name) VALUES ('contact purge erasure stamps') RETURNING id INTO v_org;
+  INSERT INTO users (organization_id, email, first_name, last_name)
+    VALUES (v_org, 'stamps@purge-test.example', 'Pat', 'Admin') RETURNING id INTO v_u;
+  INSERT INTO contacts (organization_id, contact_type, first_name, last_name, is_deleted, deleted_at)
+    VALUES (v_org, 'employee', 'Stamp', 'Subject', true, NOW() - interval '1 day')
+    RETURNING id INTO v_c;
+  INSERT INTO asset_request_tiers (organization_id, name, category)
+    VALUES (v_org, 'stamp-tier', 'laptop') RETURNING id INTO v_tier;
+
+  INSERT INTO access_requests (organization_id, requester_id, for_contact_id, requested_services)
+    VALUES (v_org, v_c, v_c, '[]'::jsonb);
+  INSERT INTO asset_requests (organization_id, requester_id, for_contact_id, tier_id)
+    VALUES (v_org, v_c, v_c, v_tier);
+  INSERT INTO offboarding_requests (
+    organization_id, contact_id, reason, last_working_day, access_termination_date, created_by
+  ) VALUES (v_org, v_c, 'termination', CURRENT_DATE, CURRENT_DATE, v_u);
+
+  -- Every stamp column named in the classification really exists, with the
+  -- right type. A rename in the migration without one here would otherwise
+  -- surface as a confusing failure further down.
+  FOR r IN SELECT table_name, column_name, stamp_column FROM cp_erasure_stamps LOOP
+    SELECT COUNT(*) INTO v_count
+      FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = r.table_name
+       AND column_name = r.stamp_column AND data_type = 'timestamp with time zone';
+    ASSERT v_count = 1,
+      format('T09: %s.%s is missing or not a timestamptz', r.table_name, r.stamp_column);
+  END LOOP;
+
+  -- --- the purge: the contact DELETE alone, because the FK does the rest ----
+  DELETE FROM contacts WHERE id = v_c;
+
+  SELECT COUNT(*) INTO v_count FROM contacts WHERE id = v_c;
+  ASSERT v_count = 0, 'T09: the contact named on three requests still could not be purged';
+
+  SELECT requester_erased_at INTO v_stamp FROM access_requests WHERE organization_id = v_org;
+  ASSERT v_stamp IS NOT NULL, 'T09: the link was nulled without being stamped';
+  ASSERT v_stamp > NOW() - interval '1 minute',
+    format('T09: the stamp is not the time of the erasure (%s)', v_stamp);
+
+  -- Control 1: an unexplained null is still refused, so the NOT NULL guarantee
+  -- was replaced rather than given up.
+  v_caught := 'no error';
+  BEGIN
+    INSERT INTO access_requests (organization_id, requester_id, for_contact_id, requested_services)
+      VALUES (v_org, NULL, NULL, '[]'::jsonb);
+    v_caught := 'ACCEPTED';
+  EXCEPTION WHEN check_violation THEN v_caught := 'check_violation'; END;
+  ASSERT v_caught = 'check_violation',
+    format('T09: a request with no requester and no erasure stamp was %s — the '
+           'migration dropped NOT NULL without replacing the guarantee', v_caught);
+
+  -- Control 2: an anonymised row cannot be quietly un-explained.
+  v_caught := 'no error';
+  BEGIN
+    UPDATE access_requests SET requester_erased_at = NULL WHERE organization_id = v_org;
+    v_caught := 'ACCEPTED';
+  EXCEPTION WHEN check_violation THEN v_caught := 'check_violation'; END;
+  ASSERT v_caught = 'check_violation',
+    format('T09: clearing the erasure stamp of an anonymised row was %s', v_caught);
+
+  -- Control 3: the discriminator. Without the stamping trigger the CHECK has
+  -- nothing to satisfy it, so the purge is refused again.
+  EXECUTE 'ALTER TABLE access_requests DISABLE TRIGGER trg_access_requests_requester_erasure';
+  EXECUTE 'ALTER TABLE access_requests DISABLE TRIGGER trg_access_requests_for_contact_erasure';
+
+  INSERT INTO contacts (organization_id, contact_type, first_name, last_name, is_deleted, deleted_at)
+    VALUES (v_org, 'employee', 'No', 'Trigger', true, NOW() - interval '1 day')
+    RETURNING id INTO v_c;
+  INSERT INTO access_requests (organization_id, requester_id, for_contact_id, requested_services)
+    VALUES (v_org, v_c, v_c, '[]'::jsonb);
+
+  v_caught := 'no error';
+  BEGIN
+    DELETE FROM contacts WHERE id = v_c;
+    v_caught := 'DELETED';
+  EXCEPTION WHEN check_violation THEN v_caught := 'check_violation'; END;
+
+  EXECUTE 'ALTER TABLE access_requests ENABLE TRIGGER trg_access_requests_requester_erasure';
+  EXECUTE 'ALTER TABLE access_requests ENABLE TRIGGER trg_access_requests_for_contact_erasure';
+
+  ASSERT v_caught = 'check_violation',
+    format('T09: with the stamping trigger off the purge was %s — so the trigger '
+           'is not what makes it work, and this test is not testing it', v_caught);
+
+  RAISE NOTICE 'T09 passed (requests anonymised and stamped; an unstamped null is still refused)';
 END $$;
 
 ROLLBACK;

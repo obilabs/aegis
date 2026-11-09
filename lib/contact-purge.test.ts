@@ -13,8 +13,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  CONTACT_ERASURE_STAMPED_COLUMNS,
   CONTACT_LINK_COLUMNS,
   CONTACT_PURGE_DELETE_TABLES,
+  countContactAnonymisations,
   purgeContactLinkRows,
 } from './contact-purge'
 
@@ -28,8 +30,21 @@ function classificationFromSql(): { table: string; column: string; disposition: 
   const start = sql.indexOf('INSERT INTO cp_classification')
   expect(start, 'the SQL test no longer populates cp_classification').toBeGreaterThan(-1)
   const block = sql.slice(start, sql.indexOf(';', start))
-  return [...block.matchAll(/\(\s*'([a-z_]+)'\s*,\s*'([a-z_]+)'\s*,\s*'(delete|detach|blocks)'\s*\)/g)]
+  // Deliberately matches ANY word as the disposition rather than the two that
+  // are legal, so a `blocks` row reintroduced in the SQL shows up as a
+  // mismatch against the TypeScript union instead of being skipped silently.
+  return [...block.matchAll(/\(\s*'([a-z_]+)'\s*,\s*'([a-z_]+)'\s*,\s*'([a-z_]+)'\s*\)/g)]
     .map(m => ({ table: m[1], column: m[2], disposition: m[3] }))
+}
+
+/** The rows of T00's `INSERT INTO cp_erasure_stamps ... VALUES (...)`. */
+function erasureStampsFromSql(): { table: string; column: string; stamp: string }[] {
+  const sql = readFileSync(SQL_TEST, 'utf8')
+  const start = sql.indexOf('INSERT INTO cp_erasure_stamps')
+  expect(start, 'the SQL test no longer populates cp_erasure_stamps').toBeGreaterThan(-1)
+  const block = sql.slice(start, sql.indexOf(';', start))
+  return [...block.matchAll(/\(\s*'([a-z_]+)'\s*,\s*'([a-z_]+)'\s*,\s*'([a-z_]+)'\s*\)/g)]
+    .map(m => ({ table: m[1], column: m[2], stamp: m[3] }))
 }
 
 const key = (c: { table: string; column: string; disposition: string }) =>
@@ -42,6 +57,39 @@ describe('contact link classification', () => {
 
     expect([...CONTACT_LINK_COLUMNS].map(key).sort())
       .toEqual(fromSql.map(key).sort())
+  })
+
+  it('has no `blocks` rows left: that bug class was decided, not recorded', () => {
+    // Five columns used to sit here as `blocks` — NOT NULL against an ON DELETE
+    // SET NULL foreign key, so Postgres refused the contact delete outright and
+    // anyone named on a request could never be erased. Migration 100 settled
+    // them as anonymisations. The disposition is gone from the union, so this
+    // asserts the SQL side agrees rather than quietly carrying the old value;
+    // the live schema is checked for the SHAPE of the bug by T08.
+    expect(classificationFromSql().filter(c => c.disposition === 'blocks')).toEqual([])
+    for (const c of CONTACT_LINK_COLUMNS) {
+      expect(['delete', 'detach']).toContain(c.disposition)
+    }
+  })
+
+  it('agrees with the SQL test about which columns carry an erasure stamp', () => {
+    const fromSql = erasureStampsFromSql()
+    const k = (c: { table: string; column: string; stamp: string }) =>
+      `${c.table}.${c.column}->${c.stamp}`
+
+    expect(
+      [...CONTACT_ERASURE_STAMPED_COLUMNS]
+        .map(c => k({ table: c.table, column: c.column, stamp: c.erasedAtColumn! }))
+        .sort(),
+    ).toEqual(fromSql.map(k).sort())
+
+    // A stamp only makes sense on a row that survives the person.
+    for (const c of CONTACT_ERASURE_STAMPED_COLUMNS) {
+      expect(c.disposition, `${c.table}.${c.column} is stamped but not detached`).toBe('detach')
+    }
+    // And it is exactly the five that used to block the purge, so a sixth added
+    // without a decision does not slip in unnoticed.
+    expect(CONTACT_ERASURE_STAMPED_COLUMNS).toHaveLength(5)
   })
 
   it('gives every column a reason, because the next person has to decide too', () => {
@@ -123,5 +171,83 @@ describe('purgeContactLinkRows', () => {
     await expect(purgeContactLinkRows(client, ['c-1'])).rejects.toThrow('permission denied')
     // Stopped at the failure: the caller's transaction is about to roll back.
     expect(client.query.mock.calls.length).toBeLessThan(CONTACT_PURGE_DELETE_TABLES.length)
+  })
+})
+
+describe('countContactAnonymisations', () => {
+  const rows = (byCol: Record<string, number>) => ({
+    rows: CONTACT_ERASURE_STAMPED_COLUMNS.map(c => ({
+      col: `${c.table}.${c.column}`,
+      n: byCol[`${c.table}.${c.column}`] ?? 0,
+    })),
+  })
+
+  it('counts every stamped column in one round trip, built from the classification', async () => {
+    const seen: string[] = []
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        seen.push(sql)
+        return rows({ 'access_requests.requester_id': 2, 'offboarding_requests.contact_id': 1 })
+      }),
+    }
+
+    const res = await countContactAnonymisations(client, ['c-1'])
+
+    expect(seen).toHaveLength(1)
+    for (const c of CONTACT_ERASURE_STAMPED_COLUMNS) {
+      expect(seen[0]).toContain(`FROM ${c.table} WHERE ${c.column} = ANY($1)`)
+    }
+    expect(res.total).toBe(3)
+    // Only the columns that had rows, so the audit payload stays readable.
+    expect(res.byColumn).toEqual({
+      'access_requests.requester_id': 2,
+      'offboarding_requests.contact_id': 1,
+    })
+  })
+
+  it('passes the ids as one array parameter, never interpolated', async () => {
+    const params: unknown[][] = []
+    const client = {
+      query: vi.fn(async (_sql: string, p: unknown[] = []) => {
+        params.push(p)
+        return rows({})
+      }),
+    }
+
+    await countContactAnonymisations(client, ['c-1', 'c-2'])
+
+    expect(params).toEqual([[['c-1', 'c-2']]])
+  })
+
+  it("reads Postgres's COUNT(*) as a number even though pg returns it as a string", async () => {
+    // node-postgres returns bigint as a string; `total += row.n` on strings
+    // would silently produce "012" instead of 3.
+    const client = {
+      query: vi.fn(async () => ({
+        rows: CONTACT_ERASURE_STAMPED_COLUMNS.map(c => ({
+          col: `${c.table}.${c.column}`,
+          n: '1' as string,
+        })),
+      })),
+    }
+
+    const res = await countContactAnonymisations(client, ['c-1'])
+    expect(res.total).toBe(CONTACT_ERASURE_STAMPED_COLUMNS.length)
+    expect(typeof res.total).toBe('number')
+  })
+
+  it('asks the database nothing when there is nothing to ask about', async () => {
+    const client = { query: vi.fn(async () => rows({})) }
+    const res = await countContactAnonymisations(client, [])
+    expect(client.query).not.toHaveBeenCalled()
+    expect(res).toEqual({ total: 0, byColumn: {} })
+  })
+
+  it('propagates a failure rather than reporting zero anonymisations', async () => {
+    // Reporting 0 here would put "nothing was anonymised" in the audit payload
+    // of a purge that anonymised something — the silent-failure shape this
+    // whole area of the code exists to avoid.
+    const client = { query: vi.fn(async () => { throw new Error('permission denied') }) }
+    await expect(countContactAnonymisations(client, ['c-1'])).rejects.toThrow('permission denied')
   })
 })
