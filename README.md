@@ -14,6 +14,9 @@ evidence part less painful.
 
 A [ObiLabs](https://obilabs.dev) project. AGPL-3.0, no paid tiers.
 
+[![Licence](https://img.shields.io/github/license/obilabs/aegis?label=licence)](LICENSE)
+[![CI](https://github.com/obilabs/aegis/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/obilabs/aegis/actions/workflows/ci.yml)
+
 ---
 
 ## Telemetry & Privacy
